@@ -9,16 +9,36 @@ let package = Package(
             name: "DataParser",
             targets: ["DataParser"]
         ),
+        .library(
+            name: "DataParser (using Foundation)",
+            targets: ["DataParser", "DataParser_Foundation"]
+        ),
     ],
     dependencies: [],
     targets: [
         .target(
             name: "DataParser",
-            dependencies: []
+            dependencies: ["Internal"]
         ),
         .testTarget(
             name: "DataParserTests",
+            dependencies: ["TestHelper"]
+        ),
+        .target(
+            name: "DataParser_Foundation",
             dependencies: ["DataParser"]
         ),
+        .testTarget(
+            name: "DataParserFoundationTests",
+            dependencies: ["TestHelper", "DataParser_Foundation"]
+        ),
+        .target(
+            name: "Internal",
+            dependencies: []
+        ),
+        .target(
+            name: "TestHelper",
+            dependencies: ["DataParser"]
+        )
     ]
 )

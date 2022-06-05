@@ -4,6 +4,8 @@
 //  Created by Charles Srstka on 11/11/15.
 //
 
+import Internal
+
 public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     private let data: DataType
     private var _cursor: DataType.Index
@@ -332,13 +334,11 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             throw DataParserError.outOfBounds
         }
 
-        if let contiguousBytes = self.data as? ContiguousBytes {
-            try contiguousBytes.withUnsafeBytes {
-                guard let srcPointer = $0.baseAddress, $0.count >= byteCount else {
-                    throw DataParserError.outOfBounds
-                }
+        if let hasContiguousRegions = self.data as? _HasContiguousRegions {
+            let range = startIndex..<endIndex
 
-                destPointer.copyMemory(from: srcPointer, byteCount: byteCount)
+            guard hasContiguousRegions.copyMemory(to: destPointer, from: self.data, range: range) else {
+                throw DataParserError.outOfBounds
             }
 
             if advance {
