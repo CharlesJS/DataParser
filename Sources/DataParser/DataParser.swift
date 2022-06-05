@@ -323,7 +323,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         return bytes
     }
 
-    private func getCStringLength(requireNullTerminator: Bool) throws -> (length: Int, hasTerminator: Bool) {
+    public func getCStringLength(requireNullTerminator: Bool = true) throws -> (length: Int, hasTerminator: Bool) {
         let nullIndex: DataType.Index?
         if let index = self.data[self._cursor...].firstIndex(where: { $0 == 0 }) {
             nullIndex = index
