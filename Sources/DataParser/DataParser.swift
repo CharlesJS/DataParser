@@ -18,6 +18,15 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     public var bytesLeft: Int { self.data.distance(from: self._cursor, to: self.data.endIndex) }
     public var isAtEnd: Bool { return self.bytesLeft == 0 }
 
+#if DEBUG
+    internal enum TrackableAccess {
+        case pointerAccess
+        case byteAccess
+    }
+
+    internal var accessCounts: [TrackableAccess : Int] = [:]
+#endif
+
     public init(_ data: DataType) {
         self.data = data
         self._cursor = data.startIndex
@@ -50,6 +59,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         if advance {
             self._cursor = self.data.index(after: self._cursor)
         }
+
+#if DEBUG
+        self.accessCounts[.byteAccess, default: 0] += 1
+#endif
 
         return byte
     }
@@ -341,6 +354,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
                 throw DataParserError.outOfBounds
             }
 
+#if DEBUG
+        self.accessCounts[.pointerAccess, default: 0] += 1
+#endif
+
             if advance {
                 self._cursor = endIndex
             }
@@ -350,6 +367,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             }
 
             destPointer.copyMemory(from: srcPointer, byteCount: byteCount)
+
+#if DEBUG
+        self.accessCounts[.pointerAccess, default: 0] += 1
+#endif
 
             if advance {
                 self._cursor = endIndex
