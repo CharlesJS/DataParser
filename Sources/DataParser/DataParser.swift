@@ -44,13 +44,11 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     private typealias LargestUnsignedInteger = UInt64
 
     public mutating func skipBytes(_ byteCount: Int) throws {
-        let newCursor = self.data.index(self._cursor, offsetBy: byteCount)
-
-        if newCursor > self.data.endIndex {
+        if self.data.distance(from: self._cursor, to: self.data.endIndex) < byteCount {
             throw DataParserError.outOfBounds
         }
 
-        self._cursor = newCursor
+        self._cursor = self.data.index(self._cursor, offsetBy: byteCount)
     }
 
     public mutating func readByte(advance: Bool = true) throws -> UInt8 {
@@ -256,9 +254,8 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         let elementSize = MemoryLayout<Element>.stride
         let byteCount = count * elementSize
         let startIndex = self._cursor
-        let nextIndex = self.data.index(startIndex, offsetBy: byteCount)
 
-        if nextIndex > self.data.endIndex {
+        if self.data.distance(from: startIndex, to: self.data.endIndex) < byteCount {
             throw DataParserError.outOfBounds
         }
 
@@ -370,11 +367,12 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
 
     public mutating func copyToPointer(_ destPointer: UnsafeMutableRawPointer, byteCount: Int, advance: Bool = true) throws {
         let startIndex = self._cursor
-        let endIndex = self.data.index(startIndex, offsetBy: byteCount)
 
-        if endIndex > self.data.endIndex {
+        if self.data.distance(from: startIndex, to: self.data.endIndex) < byteCount {
             throw DataParserError.outOfBounds
         }
+
+        let endIndex = self.data.index(startIndex, offsetBy: byteCount)
 
         if let hasContiguousRegions = self.data as? _HasContiguousRegions {
             let range = startIndex..<endIndex
