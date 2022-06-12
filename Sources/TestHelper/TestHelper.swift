@@ -2,7 +2,7 @@ import XCTest
 @testable import DataParser
 
 public struct TestHelper {
-    public static let numericTestData: [UInt8] = [
+    private static let numericTestData: [UInt8] = [
         0x12,                                                // ASCII byte
         0x34,                                                // another ASCII byte
         0x89,                                                // higher byte
@@ -24,7 +24,7 @@ public struct TestHelper {
         0xef, 0x9b, 0xaf, 0x85, 0x89, 0xcf, 0x95, 0x9a, 0x12 // 0x1234567890abcdef, LEB128
     ]
 
-    public static let stringTestData: [UInt8] = [
+    private static let stringTestData: [UInt8] = [
         0x46, 0x6f, 0x6f,                                                 // "Foo"
         0x57, 0x69, 0x74, 0x68, 0x20, 0xf0, 0x9f, 0x98, 0x80, 0x20, 0x65,
         0x6d, 0x6f, 0x6a, 0x69, 0x73, 0x20, 0xf0, 0x9f, 0x98, 0xb9,       // "With 😀 emojis 😹"
@@ -34,7 +34,19 @@ public struct TestHelper {
         0x54, 0x68, 0x65, 0x20, 0x65, 0x6e, 0x64                          // "The end"
     ]
 
-    public static func testParseNumericData<T>(parser: DataParser<T>, expectPointerAccess: Bool) throws {
+    public static func runParserTests<C: Collection>(
+        expectPointerAccess: Bool,
+        closure: ([UInt8]) -> C
+    ) throws where C.Element == UInt8 {
+        let numericParser = DataParser(closure(self.numericTestData))
+        let stringParser = DataParser(closure(self.stringTestData))
+
+        try testParseNumericData(parser: numericParser, expectPointerAccess: expectPointerAccess)
+        try testParseStringData(parser: stringParser, expectPointerAccess: expectPointerAccess)
+        try testOverflowErrors(closure: closure)
+    }
+
+    private static func testParseNumericData<T>(parser: DataParser<T>, expectPointerAccess: Bool) throws {
         try testParseSignedIntegers(parser: parser, expectPointerAccess: expectPointerAccess)
         try testParseUnsignedIntegers(parser: parser, expectPointerAccess: expectPointerAccess)
         try testFloatingPoint(parser: parser, expectPointerAccess: expectPointerAccess)
@@ -44,8 +56,279 @@ public struct TestHelper {
         try testReadTuples(parser: parser, expectPointerAccess: expectPointerAccess)
     }
 
-    public static func testParseStringData<T>(parser: DataParser<T>, expectPointerAccess: Bool) throws {
+    private static func testParseStringData<T>(parser: DataParser<T>, expectPointerAccess: Bool) throws {
         try testReadingStrings(parser: parser, expectPointerAccess: expectPointerAccess)
+    }
+
+    private static func testOverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+        try self.testNumericOverflowErrors(closure: closure)
+        try self.testByteOverflowErrors(closure: closure)
+        try self.testStringOverflowErrors(closure: closure)
+        try self.testIntArrayOverflowErrors(closure: closure)
+        try self.testPointerCopyOverflowErrors(closure: closure)
+        try self.testTupleOverflowErrors(closure: closure)
+    }
+
+    private static func testNumericOverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+        var parser = DataParser(closure([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]))
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt(ofType: Int64.self, size: 8, byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt(ofType: Int64.self, size: 8, byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
+            try $0.readInt(ofType: UInt64.self, size: 8, byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
+            try $0.readInt(ofType: UInt64.self, size: 8, byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt64(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt64(byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUInt64(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUInt64(byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
+            try $0.readDouble(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
+            try $0.readDouble(byteOrder: .little)
+        }
+
+        XCTAssertEqual(try parser.readUInt32(byteOrder: .big), 0x01020304)
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt32(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt32(byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUInt32(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUInt32(byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
+            try $0.readFloat(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
+            try $0.readFloat(byteOrder: .little)
+        }
+
+        XCTAssertEqual(try parser.readUInt16(byteOrder: .big), 0x0506)
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt16(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readInt16(byteOrder: .little)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUInt16(byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUInt16(byteOrder: .little)
+        }
+
+        XCTAssertEqual(try parser.readByte(), 0x07)
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readByte()
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readSignedByte()
+        }
+
+        try self.testLEB128OverflowErrors(closure: closure)
+    }
+
+    private static func testLEB128OverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+
+        var parser = DataParser(closure([0x80, 0x81, 0x00, 0x82, 0x83]))
+
+        XCTAssertEqual(try parser.readLEB128() as Int, 128)
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readLEB128() as Int
+        }
+    }
+
+    private static func testByteOverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+        var parser = DataParser(closure([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06]))
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readBytes(count: 8)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.skipBytes(8)
+        }
+
+        XCTAssertEqual(try parser.readBytes(count: 5), [0x00, 0x01, 0x02, 0x03, 0x04])
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readBytes(count: 3)
+        }
+
+        XCTAssertEqual(try parser.readBytes(count: 2), [0x05, 0x06])
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readBytes(count: 1)
+        }
+
+        XCTAssertEqual(try parser.readBytesToEnd(), [])
+    }
+
+    private static func testStringOverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+        var parser = DataParser(closure([0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64]))
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readUTF8String(byteCount: 12)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.getCStringLength(requireNullTerminator: true)
+        }
+
+        XCTAssertEqual(try parser.readUTF8String(byteCount: 11), "Hello World")
+    }
+
+    private static func testIntArrayOverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+        var parser = DataParser(closure([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]))
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readArray(count: 4, ofType: UInt16.self, byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.readArray(count: 4, ofType: UInt16.self, byteOrder: .little)
+        }
+
+        XCTAssertEqual(
+            try parser.readArray(count: 3, ofType: UInt16.self, byteOrder: .big, advance: false),
+            [0x0102, 0x0304, 0x0506]
+        )
+
+        XCTAssertEqual(
+            try parser.readArray(count: 3, ofType: UInt16.self, byteOrder: .little, advance: true),
+            [0x0201, 0x0403, 0x0605]
+        )
+
+        XCTAssertEqual(parser.cursor, 6)
+    }
+
+    private static func testPointerCopyOverflowErrors<C: Collection>(
+        closure: ([UInt8]) -> C
+    ) throws where C.Element == UInt8 {
+        let inputBytes: [UInt8] = [0x01, 0x02, 0x03, 0x04, 0x05]
+        var parser = DataParser(closure(inputBytes))
+
+        var data = [UInt8](repeating: 0, count: 6)
+        data.withUnsafeMutableBytes { bytes in
+            self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+                try $0.copyToBuffer(bytes, byteCount: 6)
+            }
+
+            self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+                try $0.copyToPointer(bytes.baseAddress!, byteCount: 6)
+            }
+
+            let byteBuffer = bytes.bindMemory(to: UInt8.self)
+
+            self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+                try $0.copyToBuffer(byteBuffer, count: 6)
+            }
+
+            self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+                try $0.copyToPointer(byteBuffer.baseAddress!, count: 6)
+            }
+        }
+
+        data = [UInt8](repeating: 0, count: 5)
+        try data.withUnsafeMutableBytes { bytes in
+            try parser.copyToBuffer(bytes, byteCount: 5, advance: false)
+        }
+        XCTAssertEqual(data, inputBytes)
+
+        data = [UInt8](repeating: 0, count: 5)
+        try data.withUnsafeMutableBytes { bytes in
+            try parser.copyToPointer(bytes.baseAddress!, byteCount: 5, advance: false)
+        }
+        XCTAssertEqual(data, inputBytes)
+
+        data = [UInt8](repeating: 0, count: 5)
+        try data.withUnsafeMutableBytes { bytes in
+            try parser.copyToBuffer(bytes.bindMemory(to: UInt8.self), count: 5, advance: false)
+        }
+        XCTAssertEqual(data, inputBytes)
+
+        data = [UInt8](repeating: 0, count: 5)
+        try data.withUnsafeMutableBytes { bytes in
+            try parser.copyToPointer(bytes.bindMemory(to: UInt8.self).baseAddress!, count: 5, advance: false)
+        }
+        XCTAssertEqual(data, inputBytes)
+    }
+
+    private static func testTupleOverflowErrors<C: Collection>(closure: ([UInt8]) -> C) throws where C.Element == UInt8 {
+        var parser = DataParser(closure([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]))
+
+        var tuple3: (UInt16, UInt16, UInt16) = (0, 0, 0)
+        var tuple4: (UInt16, UInt16, UInt16, UInt16) = (0, 0, 0, 0)
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.copyToTuple(&tuple4, unitType: UInt16.self, unitCount: 4, byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.copyToTuple(&tuple4, unitType: UInt16.self, unitCount: 4, byteOrder: .little)
+        }
+
+        try parser.copyToTuple(&tuple3, unitType: UInt16.self, unitCount: 3, byteOrder: .big, advance: false)
+        XCTAssertEqual(tuple3.0, 0x0102)
+        XCTAssertEqual(tuple3.1, 0x0304)
+        XCTAssertEqual(tuple3.2, 0x0506)
+
+        try parser.copyToTuple(&tuple3, unitType: UInt16.self, unitCount: 3, byteOrder: .little)
+        XCTAssertEqual(tuple3.0, 0x0201)
+        XCTAssertEqual(tuple3.1, 0x0403)
+        XCTAssertEqual(tuple3.2, 0x0605)
+
+        XCTAssertEqual(parser.cursor, 6)
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.copyToTuple(&tuple3, unitType: UInt16.self, unitCount: 3, byteOrder: .big)
+        }
+
+        self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "Read out of bounds") {
+            try $0.copyToTuple(&tuple3, unitType: UInt16.self, unitCount: 3, byteOrder: .little)
+        }
     }
 
     private static func checkPointerAccess<T>(
@@ -109,6 +392,8 @@ public struct TestHelper {
         try testRead(&parser, expect: 0x1234567890abcdef, byteCount: 9) {
             try $0.readLEB128(ofType: Int64.self, advance: $1)
         }
+
+        XCTAssertTrue(parser.isAtEnd)
 
         try self.checkPointerAccess(
             parser: parser,
@@ -199,6 +484,8 @@ public struct TestHelper {
         try testRead(&parser, expect: ContiguousArray(Self.numericTestData[32...]), byteCount: 49) {
             try $0.readBytesToEnd(advance: $1)
         }
+
+        XCTAssertTrue(parser.isAtEnd)
 
         try self.checkPointerAccess(
             parser: parser,
@@ -436,13 +723,14 @@ public struct TestHelper {
         )
     }
 
-    private static func testRead<T: Equatable, DataType: Sequence>(
+    private static func testRead<T: Equatable, DataType>(
         _ parser: inout DataParser<DataType>,
         expect expectedValue: T,
         byteCount: Int,
+        line: UInt = #line,
         closure: (_ parser: inout DataParser<DataType>, _ advance: Bool) throws -> T
     ) throws where DataType.Element == UInt8 {
-        try runTest(&parser, byteCount: byteCount) {
+        try runTest(&parser, byteCount: byteCount, line: line) {
             try closure(&$0, $1)
         } expect: {
             $0 == expectedValue
@@ -451,23 +739,74 @@ public struct TestHelper {
         }
     }
 
-    private static func runTest<DataType: Sequence, T>(
+    private static func testFailure<DataType, ErrorType: Error & Equatable, ReturnType>(
+        _ parser: inout DataParser<DataType>,
+        expectedError: ErrorType,
+        reason: String = "",
+        line: UInt = #line,
+        closure: (inout DataParser<DataType>) throws -> ReturnType
+    ) {
+        let cursor = parser.cursor
+        let bytesLeft = parser.bytesLeft
+
+        XCTAssertThrowsError(_ = try closure(&parser), reason, line: line) {
+            XCTAssertEqual($0 as? ErrorType, expectedError)
+        }
+
+        XCTAssertEqual(
+            parser.cursor,
+            cursor,
+            "Cursor should not change if an error is thrown during reading",
+            line: line
+        )
+
+        XCTAssertEqual(
+            parser.bytesLeft,
+            bytesLeft,
+            "Bytes left should not change if an error is thrown during reading",
+            line: line
+        )
+    }
+
+    private static func runTest<DataType, T>(
         _ parser: inout DataParser<DataType>,
         byteCount: Int,
+        line: UInt = #line,
         run: (_ parser: inout DataParser<DataType>, _ advance: Bool) throws -> T,
         expect: (T) throws -> Bool,
         failureMessage: (T) -> String = { _ in "Assertion failed" }
     ) throws {
         let cursor = parser.cursor
+        let bytesLeft = parser.bytesLeft
 
         let nonAdvanceValue = try run(&parser, false)
-        XCTAssert(try expect(nonAdvanceValue), failureMessage(nonAdvanceValue))
+        XCTAssert(try expect(nonAdvanceValue), failureMessage(nonAdvanceValue), line: line)
 
-        XCTAssert(parser.cursor == cursor, "Cursor changed from \(cursor) to \(parser.cursor) despite advance == false")
+        XCTAssert(
+            parser.cursor == cursor,
+            "Cursor changed from \(cursor) to \(parser.cursor) despite advance == false",
+            line: line
+        )
+
+        XCTAssert(
+            parser.bytesLeft == bytesLeft,
+            "Bytes left changed from \(bytesLeft) to \(parser.bytesLeft) despite advance == false",
+            line: line
+        )
 
         let advanceValue = try run(&parser, true)
-        XCTAssert(try expect(advanceValue), failureMessage(advanceValue))
+        XCTAssert(try expect(advanceValue), failureMessage(advanceValue), line: line)
 
-        XCTAssert(parser.cursor == cursor + byteCount, "Cursor is \(parser.cursor); expected \(cursor + byteCount)")
+        XCTAssert(
+            parser.cursor == cursor + byteCount,
+            "Cursor is \(parser.cursor); expected \(cursor + byteCount)",
+            line: line
+        )
+
+        XCTAssert(
+            parser.bytesLeft == bytesLeft - byteCount,
+            "Bytes left is \(parser.bytesLeft); expected \(bytesLeft - byteCount)",
+            line: line
+        )
     }
 }

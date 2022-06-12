@@ -44,11 +44,13 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     private typealias LargestUnsignedInteger = UInt64
 
     public mutating func skipBytes(_ byteCount: Int) throws {
-        self._cursor = self.data.index(self._cursor, offsetBy: byteCount)
+        let newCursor = self.data.index(self._cursor, offsetBy: byteCount)
 
-        if self._cursor > self.data.endIndex {
+        if newCursor > self.data.endIndex {
             throw DataParserError.outOfBounds
         }
+
+        self._cursor = newCursor
     }
 
     public mutating func readByte(advance: Bool = true) throws -> UInt8 {
@@ -167,11 +169,17 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             }
         }
 
+        let startCursor = self._cursor
+
         if advance {
-            try swap(buf, size: size)
+            do {
+                try swap(buf, size: size)
+            } catch {
+                self._cursor = startCursor
+                throw error
+            }
         } else {
-            let cursor = self.cursor
-            defer { self.cursor = cursor }
+            defer { self._cursor = startCursor }
             try swap(buf, size: size)
         }
     }
@@ -204,30 +212,35 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     }
 
     public mutating func readLEB128<I: FixedWidthInteger>(ofType: I.Type, advance: Bool = true) throws -> I {
-        let oldCursor = self.cursor
+        let oldCursor = self._cursor
 
-        var out = I()
-        var shift = 0
+        do {
+            var out = I()
+            var shift = 0
 
-        var byte: UInt8
+            var byte: UInt8
 
-        repeat {
-            byte = try self.readByte(advance: true)
+            repeat {
+                byte = try self.readByte(advance: true)
 
-            out |= (I(byte & 0x7f) &<< shift)
+                out |= (I(byte & 0x7f) &<< shift)
 
-            shift = shift &+ 7
-        } while (byte & 0x80) != 0
+                shift = shift &+ 7
+            } while (byte & 0x80) != 0
 
-        if I.isSigned && shift < I.bitWidth && (byte & 0x40) != 0 {
-            // it's negative
+            if I.isSigned && shift < I.bitWidth && (byte & 0x40) != 0 {
+                // it's negative
 
-            out |= (I(0) &- (I(1) &<< shift))
+                out |= (I(0) &- (I(1) &<< shift))
+            }
+
+            if !advance { self._cursor = oldCursor }
+
+            return out
+        } catch {
+            self._cursor = oldCursor
+            throw error
         }
-
-        if !advance { self.cursor = oldCursor }
-
-        return out
     }
 
     public mutating func readBytes(count: Int, advance: Bool = true) throws -> ContiguousArray<UInt8> {
@@ -259,16 +272,18 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
                     for i in outBuffer.indices {
                         outBuffer[i] = try self.readInt(ofType: Element.self, byteOrder: byteOrder, advance: true)
                     }
+
+                    if !advance {
+                        self._cursor = startIndex
+                    }
                 } catch {
                     for i in outBuffer.indices {
                         outBuffer[i] = 0
                     }
 
-                    throw error
-                }
-
-                if !advance {
                     self._cursor = startIndex
+
+                    throw error
                 }
             }
         }
@@ -293,34 +308,48 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     }
 
     public mutating func readUTF8CString(requireNullTerminator: Bool = true, advance: Bool = true) throws -> String {
-        let (length: byteCount, hasTerminator: hasTerminator) = try self.getCStringLength(
-            requireNullTerminator: requireNullTerminator
-        )
+        let oldCursor = self._cursor
 
-        let string = try self.readUTF8String(byteCount: byteCount, advance: advance)
+        do {
+            let (length: byteCount, hasTerminator: hasTerminator) = try self.getCStringLength(
+                requireNullTerminator: requireNullTerminator
+            )
 
-        if advance && hasTerminator {
-            try self.skipBytes(1)
+            let string = try self.readUTF8String(byteCount: byteCount, advance: advance)
+
+            if advance && hasTerminator {
+                try self.skipBytes(1)
+            }
+
+            return string
+        } catch {
+            self._cursor = oldCursor
+            throw error
         }
-
-        return string
     }
 
     private mutating func readCStringBytes(
         requireNullTerminator: Bool = true,
         advance: Bool = true
     ) throws -> ContiguousArray<UInt8> {
-        let (length: byteCount, hasTerminator: hasTerminator) = try self.getCStringLength(
-            requireNullTerminator: requireNullTerminator
-        )
+        let oldCursor = self._cursor
 
-        let bytes = try self.readBytes(count: byteCount, advance: advance)
+        do {
+            let (length: byteCount, hasTerminator: hasTerminator) = try self.getCStringLength(
+                requireNullTerminator: requireNullTerminator
+            )
 
-        if advance && hasTerminator {
-            try self.skipBytes(1)
+            let bytes = try self.readBytes(count: byteCount, advance: advance)
+
+            if advance && hasTerminator {
+                try self.skipBytes(1)
+            }
+
+            return bytes
+        } catch {
+            self._cursor = oldCursor
+            throw error
         }
-
-        return bytes
     }
 
     public func getCStringLength(requireNullTerminator: Bool = true) throws -> (length: Int, hasTerminator: Bool) {
@@ -355,7 +384,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             }
 
 #if DEBUG
-        self.accessCounts[.pointerAccess, default: 0] += 1
+            self.accessCounts[.pointerAccess, default: 0] += 1
 #endif
 
             if advance {
@@ -369,18 +398,23 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             destPointer.copyMemory(from: srcPointer, byteCount: byteCount)
 
 #if DEBUG
-        self.accessCounts[.pointerAccess, default: 0] += 1
+            self.accessCounts[.pointerAccess, default: 0] += 1
 #endif
 
             if advance {
                 self._cursor = endIndex
             }
         }) as Void? == nil {
-            for i in 0..<byteCount {
-                destPointer.storeBytes(of: try self.readByte(advance: true), toByteOffset: i, as: UInt8.self)
-            }
+            do {
+                for i in 0..<byteCount {
+                    destPointer.storeBytes(of: try self.readByte(advance: true), toByteOffset: i, as: UInt8.self)
+                }
 
-            if !advance { self._cursor = startIndex }
+                if !advance { self._cursor = startIndex }
+            } catch {
+                self._cursor = startIndex
+                throw error
+            }
         }
     }
 
@@ -420,25 +454,32 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         byteOrder: ByteOrder,
         advance: Bool = true
     ) throws {
-        try withUnsafeMutablePointer(to: &destTuple) {
-            try $0.withMemoryRebound(to: unitType, capacity: unitCount) {
-                let stride = MemoryLayout<I>.stride
+        let oldCursor = self._cursor
 
-                if stride == 1 {
-                    try self.copyToPointer($0 + startIndex, count: unitCount, advance: advance)
-                    return
+        do {
+            try withUnsafeMutablePointer(to: &destTuple) {
+                try $0.withMemoryRebound(to: unitType, capacity: unitCount) {
+                    let stride = MemoryLayout<I>.stride
+
+                    if stride == 1 {
+                        try self.copyToPointer($0 + startIndex, count: unitCount, advance: advance)
+                        return
+                    }
+
+                    let oldCursor = self.cursor
+                    var ptr = $0 + startIndex
+
+                    for _ in 0..<unitCount {
+                        ptr.pointee = try self.readInt(ofType: I.self, byteOrder: byteOrder, advance: true)
+                        ptr += 1
+                    }
+
+                    if !advance { self.cursor = oldCursor }
                 }
-
-                let oldCursor = self.cursor
-                var ptr = $0 + startIndex
-
-                for _ in 0..<unitCount {
-                    ptr.pointee = try self.readInt(ofType: I.self, byteOrder: byteOrder, advance: true)
-                    ptr += 1
-                }
-
-                if !advance { self.cursor = oldCursor }
             }
+        } catch {
+            self._cursor = oldCursor
+            throw error
         }
     }
 }
