@@ -105,11 +105,11 @@ public struct TestHelper {
         }
 
         self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
-            try $0.readDouble(byteOrder: .big)
+            try $0.readFloat64(byteOrder: .big)
         }
 
         self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
-            try $0.readDouble(byteOrder: .little)
+            try $0.readFloat64(byteOrder: .little)
         }
 
         XCTAssertEqual(try parser.readUInt32(byteOrder: .big), 0x01020304)
@@ -131,11 +131,11 @@ public struct TestHelper {
         }
 
         self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
-            try $0.readFloat(byteOrder: .big)
+            try $0.readFloat32(byteOrder: .big)
         }
 
         self.testFailure(&parser, expectedError: DataParserError.outOfBounds, reason: "read out of bounds") {
-            try $0.readFloat(byteOrder: .little)
+            try $0.readFloat32(byteOrder: .little)
         }
 
         XCTAssertEqual(try parser.readUInt16(byteOrder: .big), 0x0506)
@@ -445,15 +445,15 @@ public struct TestHelper {
 
         try parser.skipBytes(41)
 
-        try testRead(&parser, expect: 3.14159012, byteCount: 4) { try $0.readFloat(byteOrder: .big, advance: $1) }
-        try testRead(&parser, expect: 2.71828008, byteCount: 4) { try $0.readFloat(byteOrder: .little, advance: $1) }
+        try testRead(&parser, expect: 3.14159012, byteCount: 4) { try $0.readFloat32(byteOrder: .big, advance: $1) }
+        try testRead(&parser, expect: 2.71828008, byteCount: 4) { try $0.readFloat32(byteOrder: .little, advance: $1) }
 
         try testRead(&parser, expect: 2.7182818284590451, byteCount: 8) {
-            try $0.readDouble(byteOrder: .big, advance: $1)
+            try $0.readFloat64(byteOrder: .big, advance: $1)
         }
 
         try testRead(&parser, expect: 3.1415926535897931, byteCount: 8) {
-            try $0.readDouble(byteOrder: .little, advance: $1)
+            try $0.readFloat64(byteOrder: .little, advance: $1)
         }
 
         try self.checkPointerAccess(

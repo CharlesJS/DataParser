@@ -182,12 +182,12 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         }
     }
 
-    public mutating func readFloat(byteOrder: ByteOrder, advance: Bool = true) throws -> Float {
-        return try Float(bitPattern: self.readUInt32(byteOrder: byteOrder, advance: advance))
+    public mutating func readFloat32(byteOrder: ByteOrder, advance: Bool = true) throws -> Float32 {
+        return try Float32(bitPattern: self.readUInt32(byteOrder: byteOrder, advance: advance))
     }
 
-    public mutating func readDouble(byteOrder: ByteOrder, advance: Bool = true) throws -> Double {
-        return try Double(bitPattern: self.readUInt64(byteOrder: byteOrder, advance: advance))
+    public mutating func readFloat64(byteOrder: ByteOrder, advance: Bool = true) throws -> Float64 {
+        return try Float64(bitPattern: self.readUInt64(byteOrder: byteOrder, advance: advance))
     }
 
     public mutating func readFloat<F: BinaryFloatingPoint>(
@@ -196,10 +196,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         advance: Bool = true
     ) throws -> F {
         switch MemoryLayout<F>.size {
-        case MemoryLayout<Float>.size:
-            return F(try self.readFloat(byteOrder: byteOrder, advance: advance))
-        case MemoryLayout<Double>.size:
-            return F(try self.readDouble(byteOrder: byteOrder, advance: advance))
+        case MemoryLayout<Float32>.size:
+            return F(try self.readFloat32(byteOrder: byteOrder, advance: advance))
+        case MemoryLayout<Float64>.size:
+            return F(try self.readFloat64(byteOrder: byteOrder, advance: advance))
         default:
             throw DataParserError.invalidArgument
         }
