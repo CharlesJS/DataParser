@@ -723,14 +723,15 @@ public struct TestHelper {
         )
     }
 
-    private static func testRead<T: Equatable, DataType>(
+    public static func testRead<T: Equatable, DataType>(
         _ parser: inout DataParser<DataType>,
         expect expectedValue: T,
         byteCount: Int,
+        file: StaticString = #file,
         line: UInt = #line,
         closure: (_ parser: inout DataParser<DataType>, _ advance: Bool) throws -> T
     ) throws where DataType.Element == UInt8 {
-        try runTest(&parser, byteCount: byteCount, line: line) {
+        try runTest(&parser, byteCount: byteCount, file: file, line: line) {
             try closure(&$0, $1)
         } expect: {
             $0 == expectedValue
@@ -739,17 +740,18 @@ public struct TestHelper {
         }
     }
 
-    private static func testFailure<DataType, ErrorType: Error & Equatable, ReturnType>(
+    public static func testFailure<DataType, ErrorType: Error & Equatable, ReturnType>(
         _ parser: inout DataParser<DataType>,
         expectedError: ErrorType,
         reason: String = "",
+        file: StaticString = #file,
         line: UInt = #line,
         closure: (inout DataParser<DataType>) throws -> ReturnType
     ) {
         let cursor = parser.cursor
         let bytesLeft = parser.bytesLeft
 
-        XCTAssertThrowsError(_ = try closure(&parser), reason, line: line) {
+        XCTAssertThrowsError(_ = try closure(&parser), reason, file: file, line: line) {
             XCTAssertEqual($0 as? ErrorType, expectedError)
         }
 
@@ -757,6 +759,7 @@ public struct TestHelper {
             parser.cursor,
             cursor,
             "Cursor should not change if an error is thrown during reading",
+            file: file,
             line: line
         )
 
@@ -764,6 +767,7 @@ public struct TestHelper {
             parser.bytesLeft,
             bytesLeft,
             "Bytes left should not change if an error is thrown during reading",
+            file: file,
             line: line
         )
     }
@@ -771,6 +775,7 @@ public struct TestHelper {
     private static func runTest<DataType, T>(
         _ parser: inout DataParser<DataType>,
         byteCount: Int,
+        file: StaticString = #file,
         line: UInt = #line,
         run: (_ parser: inout DataParser<DataType>, _ advance: Bool) throws -> T,
         expect: (T) throws -> Bool,
@@ -780,32 +785,36 @@ public struct TestHelper {
         let bytesLeft = parser.bytesLeft
 
         let nonAdvanceValue = try run(&parser, false)
-        XCTAssert(try expect(nonAdvanceValue), failureMessage(nonAdvanceValue), line: line)
+        XCTAssert(try expect(nonAdvanceValue), failureMessage(nonAdvanceValue), file: file, line: line)
 
         XCTAssert(
             parser.cursor == cursor,
             "Cursor changed from \(cursor) to \(parser.cursor) despite advance == false",
+            file: file,
             line: line
         )
 
         XCTAssert(
             parser.bytesLeft == bytesLeft,
             "Bytes left changed from \(bytesLeft) to \(parser.bytesLeft) despite advance == false",
+            file: file,
             line: line
         )
 
         let advanceValue = try run(&parser, true)
-        XCTAssert(try expect(advanceValue), failureMessage(advanceValue), line: line)
+        XCTAssert(try expect(advanceValue), failureMessage(advanceValue), file: file, line: line)
 
         XCTAssert(
             parser.cursor == cursor + byteCount,
             "Cursor is \(parser.cursor); expected \(cursor + byteCount)",
+            file: file,
             line: line
         )
 
         XCTAssert(
             parser.bytesLeft == bytesLeft - byteCount,
             "Bytes left is \(parser.bytesLeft); expected \(bytesLeft - byteCount)",
+            file: file,
             line: line
         )
     }

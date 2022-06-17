@@ -6,56 +6,191 @@ import DataParser
 
 final class DataTests: XCTestCase {
     func testData() throws {
-        let data = Data(TestHelper.numericTestData)
-
-        try TestHelper.testParseNumericData(parser: DataParser(data), expectPointerAccess: true)
-        try TestHelper.testParseNumericData(parser: DataParser(data as NSData), expectPointerAccess: true)
+        try TestHelper.runParserTests(expectPointerAccess: true) { Data($0) }
+        try TestHelper.runParserTests(expectPointerAccess: true) { Data($0) as NSData }
     }
 
     func testDispatchData() throws {
-        let data = TestHelper.numericTestData.withUnsafeBytes { DispatchData(bytes: $0) }
-
-        try TestHelper.testParseNumericData(parser: DataParser(data), expectPointerAccess: true)
+        try TestHelper.runParserTests(expectPointerAccess: true) { $0.withUnsafeBytes { DispatchData(bytes: $0) } }
     }
 
     func testNonContiguousDispatchData() throws {
-        let cutoffs = [0x4, 0x8, 0xe, 0x18, 0x21, 0x22, 0x29, 0x2e, 0x36, 0x41, 0x50]
-        var data = DispatchData.empty
+        try TestHelper.runParserTests(expectPointerAccess: true) { bytes -> DispatchData in
+            let cutoffs = [0x4, 0x8, 0xe, 0x18, 0x21, 0x22, 0x29, 0x2e, 0x36, 0x41, 0x50].filter { $0 < bytes.count }
+            var data = DispatchData.empty
 
-        var regionStart = 0
-        for eachCutoff in cutoffs + [TestHelper.numericTestData.count] {
-            TestHelper.numericTestData[regionStart..<eachCutoff].withUnsafeBytes {
-                data.append(DispatchData(bytes: $0))
-            }
-
-            regionStart = eachCutoff
-        }
-
-        try TestHelper.testParseNumericData(parser: DataParser(data), expectPointerAccess: true)
-    }
-
-    func testDataAccessViaPointer() throws {
-        class DataMock: NSObject {
-            private let data: NSData
-
-            init(data: Data) {
-                self.data = data as NSData
-            }
-
-            override func forwardingTarget(for selector: Selector!) -> Any? {
-                if selector == #selector(NSData.enumerateBytes(_:)) {
-                    NSLog("enumerate bytes")
+            var regionStart = 0
+            for eachCutoff in cutoffs + [bytes.count] {
+                bytes[regionStart..<eachCutoff].withUnsafeBytes {
+                    data.append(DispatchData(bytes: $0))
                 }
 
-                return self.data
+                regionStart = eachCutoff
+            }
+
+            return data
+        }
+    }
+
+    func testReadingData() throws {
+        var parser = DataParser([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a])
+
+        TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) { try $0.readData(count: 12) }
+
+        try TestHelper.testRead(&parser, expect: Data([0x00, 0x01, 0x02]), byteCount: 3) { parser, advance in
+            try parser.readData(count: 3, advance: advance)
+        }
+
+        try TestHelper.testRead(&parser, expect: Data([0x03, 0x04, 0x05, 0x06, 0x07]), byteCount: 5) { parser, advance in
+            try parser.readData(count: 5, advance: advance)
+        }
+
+        try TestHelper.testRead(&parser, expect: Data([0x08, 0x09, 0x0a]), byteCount: 3) { parser, advance in
+            try parser.readDataToEnd(advance: advance)
+        }
+
+        TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) { try $0.readData(count: 1) }
+    }
+
+    func testStringEncodings() throws {
+        let string = "Tëstíñg Tê§†ing"
+
+        let encodings: [String.Encoding] = [.nextstep, .utf8, .utf16, .windowsCP1252, .windowsCP1254, .macOSRoman]
+
+        var rawData = Data()
+        var cStringData = Data()
+        var pascalStringData = Data()
+
+        let lengths: [Int] = encodings.map { encoding in
+            let stringData = string.data(using: encoding)!
+
+            rawData += stringData
+
+            if encoding != .utf16 {
+                for _ in 0..<3 {
+                    cStringData += stringData + [0]
+                }
+
+                rawData += stringData
+            }
+
+            pascalStringData += [UInt8(stringData.count)] + stringData
+
+            return stringData.count
+        }
+
+        var rawParser = DataParser(rawData)
+        var cStringParser = DataParser(cStringData)
+        var pascalStringParser = DataParser(pascalStringData)
+
+        TestHelper.testFailure(&rawParser, expectedError: DataParserError.outOfBounds) {
+            try $0.readString(byteCount: rawData.count + 1, encoding: .utf8)
+        }
+
+        TestHelper.testFailure(&cStringParser, expectedError: DataParserError.outOfBounds) {
+            try $0.readCString(byteCount: cStringData.count + 1, requireNullTerminator: true, encoding: .utf8)
+        }
+
+        TestHelper.testFailure(&cStringParser, expectedError: DataParserError.outOfBounds) {
+            try $0.readCString(byteCount: cStringData.count + 1, requireNullTerminator: false, encoding: .utf8)
+        }
+
+        for (encoding, length) in zip(encodings, lengths) {
+            if encoding != .utf16 {
+                try TestHelper.testRead(&cStringParser, expect: string, byteCount: length + 1) { parser, advance in
+                    try parser.readCString(encoding: encoding, advance: advance)
+                }
+
+                try TestHelper.testRead(&cStringParser, expect: string, byteCount: length + 1) { parser, advance in
+                    try parser.readCString(
+                        byteCount: length + 1,
+                        requireNullTerminator: false,
+                        encoding: encoding,
+                        advance: advance
+                    )
+                }
+
+                TestHelper.testFailure(
+                    &cStringParser,
+                    expectedError: CocoaError(.fileReadInapplicableStringEncoding),
+                    reason: "Should fail if the string cannot be rendered in the requested encoding"
+                ) { try $0.readCString(encoding: .nonLossyASCII) }
+
+                try TestHelper.testRead(&cStringParser, expect: string, byteCount: length + 1) { parser, advance in
+                    try parser.readCString(
+                        byteCount: length + 1,
+                        requireNullTerminator: true,
+                        encoding: encoding,
+                        advance: advance
+                    )
+                }
+
+                try TestHelper.testRead(&rawParser, expect: string, byteCount: length) { parser, advance in
+                    try parser.readCString(
+                        byteCount: length,
+                        requireNullTerminator: false,
+                        encoding: encoding,
+                        advance: advance
+                    )
+                }
+
+                TestHelper.testFailure(
+                    &rawParser,
+                    expectedError: CocoaError(.fileReadCorruptFile),
+                    reason: "Should fail because there are no terminator bytes in the data"
+                ) { try $0.readCString(byteCount: length, requireNullTerminator: true, encoding: encoding) }
+            }
+
+            try TestHelper.testRead(&rawParser, expect: string, byteCount: length) { parser, advance in
+                try parser.readString(byteCount: length, encoding: encoding, advance: advance)
+            }
+
+            try TestHelper.testRead(&pascalStringParser, expect: string, byteCount: length + 1) { parser, advance in
+                try parser.readPascalString(encoding: encoding, advance: advance)
+            }
+        }
+    }
+
+    func testReadFileSystemRepresentation() throws {
+        let paths: [(path: String, isDirectory: Bool)] = [
+            ("/bin", true),
+            ("/usr/bin/true", false),
+            ("/etc/zshrc", false),
+            (NSHomeDirectory(), true),
+            ("/dev/does/not/exist", true),
+            ("/dev/also/does/not/exist", false)
+        ]
+
+        var data = Data()
+        var lengths: [Int] = []
+
+        for (path, _) in paths {
+            withExtendedLifetime(path as NSString) {
+                let fileSystemRep = $0.fileSystemRepresentation
+                let length = strlen(fileSystemRep)
+
+                for _ in 0..<2 {
+                    data.append(Data(bytes: fileSystemRep, count: length))
+                    data.append(0)
+                }
+
+                lengths.append(length + 1)
             }
         }
 
-        let dataMock = DataMock(data: Data(TestHelper.numericTestData))
+        var parser = DataParser(data)
 
-        try TestHelper.testParseNumericData(
-            parser: DataParser(unsafeBitCast(dataMock, to: NSData.self)),
-            expectPointerAccess: true
-        )
+        for ((path, isDirectory), length) in zip(paths, lengths) {
+            let expectedURL = URL(fileURLWithPath: path)
+            let expectedURLWithDirectory = URL(fileURLWithPath: path, isDirectory: isDirectory)
+
+            try TestHelper.testRead(&parser, expect: expectedURL, byteCount: length) { parser, advance in
+                try parser.readFileSystemRepresentation(advance: advance)
+            }
+
+            try TestHelper.testRead(&parser, expect: expectedURLWithDirectory, byteCount: length) { parser, advance in
+                try parser.readFileSystemRepresentation(isDirectory: isDirectory, advance: advance)
+            }
+        }
     }
 }
