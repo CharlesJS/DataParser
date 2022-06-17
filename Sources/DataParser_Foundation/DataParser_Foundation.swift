@@ -29,17 +29,21 @@ extension DataParser {
     }
 
     public mutating func readString(byteCount: Int, encoding: String.Encoding, advance: Bool = true) throws -> String {
-        let data = try self.readData(count: byteCount, advance: advance)
-        guard let string = String(data: data, encoding: encoding) else {
-            throw CocoaError(.fileReadInapplicableStringEncoding)
-        }
+        try self._makeAtomic(advance: advance) { parser in
+            let data = try parser.readData(count: byteCount, advance: advance)
+            guard let string = String(data: data, encoding: encoding) else {
+                throw CocoaError(.fileReadInapplicableStringEncoding)
+            }
 
-        return string
+            return string
+        }
     }
 
     public mutating func readCString(encoding: String.Encoding, advance: Bool = true) throws -> String {
-        let data = try self.readCStringBytes(advance: advance)
-        return try self.string(from: data, requireNullTerminator: false, encoding: encoding)
+        try self._makeAtomic(advance: advance) { parser in
+            let data = try parser.readCStringBytes(advance: advance)
+            return try parser.string(from: data, requireNullTerminator: false, encoding: encoding)
+        }
     }
 
     public mutating func readCString(
@@ -48,20 +52,24 @@ extension DataParser {
         encoding: String.Encoding,
         advance: Bool = true
     ) throws -> String {
-        let data = try self.readData(count: byteCount, advance: advance)
-        return try self.string(from: data, requireNullTerminator: requireNullTerminator, encoding: encoding)
+        try self._makeAtomic(advance: advance) { parser in
+            let data = try parser.readData(count: byteCount, advance: advance)
+            return try parser.string(from: data, requireNullTerminator: requireNullTerminator, encoding: encoding)
+        }
     }
 
     private mutating func readCStringBytes(advance: Bool) throws -> Data {
-        let (length: byteCount, hasTerminator: hasTerminator) = try self.getCStringLength()
+        try self._makeAtomic(advance: advance) { parser in
+            let (length: byteCount, hasTerminator: hasTerminator) = try parser.getCStringLength()
 
-        let bytes = try self.readData(count: byteCount, advance: advance)
+            let bytes = try parser.readData(count: byteCount, advance: advance)
 
-        if advance && hasTerminator {
-            try self.skipBytes(1)
+            if advance && hasTerminator {
+                try parser.skipBytes(1)
+            }
+
+            return bytes
         }
-
-        return bytes
     }
     
     private func string(from data: Data, requireNullTerminator: Bool, encoding: String.Encoding) throws -> String {
@@ -87,44 +95,43 @@ extension DataParser {
         }
     }
 
-    public mutating func readFileSystemRepresentation(
-        advance: Bool = true,
-        isDirectory: Bool? = nil
-    ) throws -> URL {
-        let bytes = try self.readCStringBytes(advance: advance)
+    public mutating func readFileSystemRepresentation(isDirectory: Bool? = nil, advance: Bool = true) throws -> URL {
+        try self._makeAtomic(advance: advance) { parser in
+            let bytes = try parser.readCStringBytes(advance: advance)
 
-        return try bytes.withUnsafeBytes { bytes in
-            if let isDirectory = isDirectory {
-                let path = bytes.bindMemory(to: CChar.self)
+            return try bytes.withUnsafeBytes { bytes in
+                if let isDirectory = isDirectory {
+                    let path = bytes.bindMemory(to: CChar.self)
 
-                guard let url = CFURLCreateFromFileSystemRepresentation(
-                    kCFAllocatorDefault,
-                    path.baseAddress,
-                    path.count,
-                    isDirectory
-                ) else {
-                    throw CocoaError(.fileReadUnknown)
-                }
+                    guard let url = CFURLCreateFromFileSystemRepresentation(
+                        kCFAllocatorDefault,
+                        path.baseAddress,
+                        path.count,
+                        isDirectory
+                    ) else {
+                        throw CocoaError(.fileReadUnknown)
+                    }
 
-                return url as URL
-            } else {
-                let path: String
-
-                if let ptr = bytes.bindMemory(to: Int8.self).baseAddress {
-                    path = FileManager.default.string(withFileSystemRepresentation: ptr, length: bytes.count)
+                    return url as URL
                 } else {
-                    throw CocoaError(.fileReadUnknown)
-                }
+                    let path: String
 
-                return URL(fileURLWithPath: path)
+                    if let ptr = bytes.bindMemory(to: Int8.self).baseAddress {
+                        path = FileManager.default.string(withFileSystemRepresentation: ptr, length: bytes.count)
+                    } else {
+                        throw CocoaError(.fileReadUnknown)
+                    }
+
+                    return URL(fileURLWithPath: path)
+                }
             }
         }
     }
 
-    public mutating func readPascalString(_ encoding: String.Encoding, advance: Bool = true) throws -> String {
-        let count: UInt8 = try self.readByte(advance: true)
-        defer { if !advance { self.cursor = self.cursor &- 1 } }
-
-        return try self.readString(byteCount: Int(count), encoding: encoding, advance: advance)
+    public mutating func readPascalString(encoding: String.Encoding, advance: Bool = true) throws -> String {
+        try self._makeAtomic(advance: advance) { parser in
+            let count: UInt8 = try parser.readByte(advance: true)
+            return try parser.readString(byteCount: Int(count), encoding: encoding, advance: advance)
+        }
     }
 }
