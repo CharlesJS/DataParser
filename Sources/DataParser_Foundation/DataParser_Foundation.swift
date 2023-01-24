@@ -6,10 +6,11 @@
 //
 
 import Foundation
-import DataParser
+@_spi(DataParserInternal) import DataParser
 
 extension DataParser {
-    public mutating func readData(count: Int, advance: Bool = true) throws -> Data {
+    public mutating func readData(count: some BinaryInteger, advance: Bool = true) throws -> Data {
+        let count = Int(count)
         let ptr = UnsafeMutablePointer<UInt8>.allocate(capacity: count)
 
         do {
@@ -28,7 +29,11 @@ extension DataParser {
         return try self.readData(count: self.bytesLeft, advance: advance)
     }
 
-    public mutating func readString(byteCount: Int, encoding: String.Encoding, advance: Bool = true) throws -> String {
+    public mutating func readString(
+        byteCount: some BinaryInteger,
+        encoding: String.Encoding,
+        advance: Bool = true
+    ) throws -> String {
         try self._makeAtomic(advance: advance) { parser in
             let data = try parser.readData(count: byteCount, advance: advance)
             guard let string = String(data: data, encoding: encoding) else {
@@ -47,7 +52,7 @@ extension DataParser {
     }
 
     public mutating func readCString(
-        byteCount: Int,
+        byteCount: some BinaryInteger,
         requireNullTerminator: Bool = true,
         encoding: String.Encoding,
         advance: Bool = true

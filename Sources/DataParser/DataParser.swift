@@ -32,8 +32,8 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         self._cursor = data.startIndex
     }
 
-    public init(pointer: UnsafeRawPointer, count: Int) where DataType == UnsafeRawBufferPointer {
-        self.init(buffer: UnsafeRawBufferPointer(start: pointer, count: count))
+    public init(pointer: UnsafeRawPointer, count: some BinaryInteger) where DataType == UnsafeRawBufferPointer {
+        self.init(buffer: UnsafeRawBufferPointer(start: pointer, count: Int(count)))
     }
 
     public init(buffer: UnsafeRawBufferPointer) where DataType == UnsafeRawBufferPointer {
@@ -43,12 +43,12 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     private typealias LargestSignedInteger = Int64
     private typealias LargestUnsignedInteger = UInt64
 
-    public mutating func skipBytes(_ byteCount: Int) throws {
+    public mutating func skipBytes(_ byteCount: some BinaryInteger) throws {
         if self.data.distance(from: self._cursor, to: self.data.endIndex) < byteCount {
             throw DataParserError.outOfBounds
         }
 
-        self._cursor = self.data.index(self._cursor, offsetBy: byteCount)
+        self._cursor = self.data.index(self._cursor, offsetBy: Int(byteCount))
     }
 
     public mutating func readByte(advance: Bool = true) throws -> UInt8 {
@@ -133,13 +133,17 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         return try self.readInt(ofType: type, size: MemoryLayout<T>.size, byteOrder: byteOrder, advance: advance)
     }
 
-    public mutating func readInt<T: FixedWidthInteger>(size: Int, byteOrder: ByteOrder, advance: Bool = true) throws -> T {
+    public mutating func readInt<T: FixedWidthInteger>(
+        size: some BinaryInteger,
+        byteOrder: ByteOrder,
+        advance: Bool = true
+    ) throws -> T {
         return try self.readInt(ofType: T.self, size: size, byteOrder: byteOrder, advance: advance)
     }
 
     public mutating func readInt<T: FixedWidthInteger>(
         ofType type: T.Type,
-        size: Int,
+        size: some BinaryInteger,
         byteOrder: ByteOrder,
         advance: Bool = true
     ) throws -> T {
@@ -151,7 +155,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             if byteOrder.isHost {
                 try self.copyToPointer(buf.baseAddress!, byteCount: size, advance: advance)
             } else {
-                try self._readSwapped(buf, size: size, advance: advance)
+                try self._readSwapped(buf, size: Int(size), advance: advance)
             }
         }
 
@@ -222,16 +226,17 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         }
     }
 
-    public mutating func readBytes(count: Int, advance: Bool = true) throws -> ContiguousArray<UInt8> {
+    public mutating func readBytes(count: some BinaryInteger, advance: Bool = true) throws -> ContiguousArray<UInt8> {
         try self.readArray(count: count, ofType: UInt8.self, byteOrder: .host, advance: advance)
     }
 
     public mutating func readArray<Element: FixedWidthInteger>(
-        count: Int,
+        count: some BinaryInteger,
         ofType _: Element.Type,
         byteOrder: ByteOrder,
         advance: Bool = true
     ) throws -> ContiguousArray<Element> {
+        let count = Int(count)
         let elementSize = MemoryLayout<Element>.stride
         let byteCount = count * elementSize
         let startIndex = self._cursor
@@ -267,8 +272,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         try self.readBytes(count: self.bytesLeft, advance: advance)
     }
 
-    public mutating func readUTF8String(byteCount: Int, advance: Bool = true) throws -> String {
+    public mutating func readUTF8String(byteCount: some BinaryInteger, advance: Bool = true) throws -> String {
         if #available(macOS 11.0, *) {
+            let byteCount = Int(byteCount)
+
             return try String(unsafeUninitializedCapacity: byteCount) {
                 try self.copyToBuffer($0, count: byteCount, advance: advance)
 
@@ -332,7 +339,12 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         return (length: length, hasTerminator: hasTerminator)
     }
 
-    public mutating func copyToPointer(_ destPointer: UnsafeMutableRawPointer, byteCount: Int, advance: Bool = true) throws {
+    public mutating func copyToPointer(
+        _ destPointer: UnsafeMutableRawPointer,
+        byteCount: some BinaryInteger,
+        advance: Bool = true
+    ) throws {
+        let byteCount = Int(byteCount)
         let startIndex = self._cursor
 
         if self.data.distance(from: startIndex, to: self.data.endIndex) < byteCount {
@@ -378,27 +390,33 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         }
     }
 
-    public mutating func copyToPointer<T>(_ destPointer: UnsafeMutablePointer<T>, count: Int, advance: Bool = true) throws {
-        let byteCount = count &* MemoryLayout<T>.stride
+    public mutating func copyToPointer<T>(
+        _ destPointer: UnsafeMutablePointer<T>,
+        count: some BinaryInteger,
+        advance: Bool = true
+    ) throws {
+        let byteCount = Int(count) &* MemoryLayout<T>.stride
 
         try self.copyToPointer(UnsafeMutableRawPointer(destPointer), byteCount: byteCount, advance: advance)
     }
 
     public mutating func copyToBuffer<T>(
         _ destBuffer: UnsafeMutableBufferPointer<T>,
-        count: Int,
+        count: some BinaryInteger,
         advance: Bool = true
     ) throws {
-        let byteCount = count &* MemoryLayout<T>.stride
+        let byteCount = Int(count) &* MemoryLayout<T>.stride
 
         try self.copyToBuffer(UnsafeMutableRawBufferPointer(destBuffer), byteCount: byteCount, advance: advance)
     }
 
     public mutating func copyToBuffer(
         _ destBuffer: UnsafeMutableRawBufferPointer,
-        byteCount: Int,
+        byteCount: some BinaryInteger,
         advance: Bool = true
     ) throws {
+        let byteCount = Int(byteCount)
+
         guard byteCount <= destBuffer.count, let baseAddress = destBuffer.baseAddress else {
             throw DataParserError.invalidArgument
         }
@@ -409,11 +427,14 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     public mutating func copyToTuple<T, I: FixedWidthInteger>(
         _ destTuple: inout T,
         unitType: I.Type,
-        unitCount: Int,
-        beginningAtIndex startIndex: Int = 0,
+        unitCount: some BinaryInteger,
+        beginningAtIndex: some BinaryInteger = Int(0),
         byteOrder: ByteOrder,
         advance: Bool = true
     ) throws {
+        let unitCount = Int(unitCount)
+        let startIndex = Int(beginningAtIndex)
+
         try self._makeAtomic(advance: advance) { parser in
             try withUnsafeMutablePointer(to: &destTuple) {
                 try $0.withMemoryRebound(to: unitType, capacity: unitCount) {
@@ -435,7 +456,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         }
     }
 
-    public mutating func _makeAtomic<T>(advance: Bool, closure: (inout DataParser<DataType>) throws -> T) rethrows -> T {
+    @_spi(DataParserInternal) public mutating func _makeAtomic<T>(
+        advance: Bool,
+        closure: (inout DataParser<DataType>) throws -> T
+    ) rethrows -> T {
         let startingCursor = self._cursor
 
         do {
