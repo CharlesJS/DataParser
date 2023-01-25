@@ -6,16 +6,18 @@ import DataParser
 
 final class DataTests: XCTestCase {
     func testData() throws {
-        try TestHelper.runParserTests(expectPointerAccess: true) { Data($0) }
-        try TestHelper.runParserTests(expectPointerAccess: true) { Data($0) as NSData }
+        try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(Data($0)) }
+        try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(Data($0) as NSData) }
     }
 
     func testDispatchData() throws {
-        try TestHelper.runParserTests(expectPointerAccess: true) { $0.withUnsafeBytes { DispatchData(bytes: $0) } }
+        try TestHelper.runParserTests(expectPointerAccess: true) {
+            $0.withUnsafeBytes { DataParser(DispatchData(bytes: $0)) }
+        }
     }
 
     func testNonContiguousDispatchData() throws {
-        try TestHelper.runParserTests(expectPointerAccess: true) { bytes -> DispatchData in
+        try TestHelper.runParserTests(expectPointerAccess: true) { bytes -> DataParser<DispatchData> in
             let cutoffs = [0x4, 0x8, 0xe, 0x18, 0x21, 0x22, 0x29, 0x2e, 0x36, 0x41, 0x50].filter { $0 < bytes.count }
             var data = DispatchData.empty
 
@@ -28,7 +30,7 @@ final class DataTests: XCTestCase {
                 regionStart = eachCutoff
             }
 
-            return data
+            return DataParser(data)
         }
     }
 
@@ -141,6 +143,12 @@ final class DataTests: XCTestCase {
                 ) { try $0.readCString(byteCount: length, requireNullTerminator: true, encoding: encoding) }
             }
 
+            TestHelper.testFailure(
+                &rawParser,
+                expectedError: CocoaError(.fileReadInapplicableStringEncoding),
+                reason: "Should fail if the string cannot be rendered in the requested encoding"
+            ) { try $0.readString(byteCount: length, encoding: .nonLossyASCII) }
+
             try TestHelper.testRead(&rawParser, expect: string, byteCount: length) { parser, advance in
                 try parser.readString(byteCount: length, encoding: encoding, advance: advance)
             }
@@ -152,19 +160,21 @@ final class DataTests: XCTestCase {
     }
 
     func testReadFileSystemRepresentation() throws {
-        let paths: [(path: String, isDirectory: Bool)] = [
-            ("/bin", true),
-            ("/usr/bin/true", false),
-            ("/etc/zshrc", false),
-            (NSHomeDirectory(), true),
-            ("/dev/does/not/exist", true),
-            ("/dev/also/does/not/exist", false)
+        let paths: [(path: String, isDirectory: Bool, (any Error & Equatable)?)] = [
+            ("/bin", true, nil),
+            ("/usr/bin/true", false, nil),
+            ("/etc/zshrc", false, nil),
+            (NSHomeDirectory(), true, nil),
+            ("/dev/does/not/exist", true, nil),
+            ("/dev/also/does/not/exist", false, nil),
+            ("\0\0\0", false, CocoaError(.fileReadUnknown)),
+            ("\0\0\0", true, CocoaError(.fileReadUnknown)),
         ]
 
         var data = Data()
         var lengths: [Int] = []
 
-        for (path, _) in paths {
+        for (path, _, _) in paths {
             withExtendedLifetime(path as NSString) {
                 let fileSystemRep = $0.fileSystemRepresentation
                 let length = strlen(fileSystemRep)
@@ -180,16 +190,28 @@ final class DataTests: XCTestCase {
 
         var parser = DataParser(data)
 
-        for ((path, isDirectory), length) in zip(paths, lengths) {
-            let expectedURL = URL(fileURLWithPath: path)
-            let expectedURLWithDirectory = URL(fileURLWithPath: path, isDirectory: isDirectory)
+        for ((path, isDirectory, err), length) in zip(paths, lengths) {
+            if let err {
+                TestHelper.testFailure(&parser, expectedError: err) { parser in
+                    try parser.readFileSystemRepresentation(isDirectory: isDirectory)
+                }
 
-            try TestHelper.testRead(&parser, expect: expectedURL, byteCount: length) { parser, advance in
-                try parser.readFileSystemRepresentation(advance: advance)
-            }
+                TestHelper.testFailure(&parser, expectedError: err) { parser in
+                    try parser.readFileSystemRepresentation(isDirectory: nil)
+                }
 
-            try TestHelper.testRead(&parser, expect: expectedURLWithDirectory, byteCount: length) { parser, advance in
-                try parser.readFileSystemRepresentation(isDirectory: isDirectory, advance: advance)
+                try parser.skipBytes(length)
+            } else {
+                let expectedURL = URL(fileURLWithPath: path)
+                let expectedURLWithDirectory = URL(fileURLWithPath: path, isDirectory: isDirectory)
+
+                try TestHelper.testRead(&parser, expect: expectedURL, byteCount: length) { parser, advance in
+                    try parser.readFileSystemRepresentation(advance: advance)
+                }
+
+                try TestHelper.testRead(&parser, expect: expectedURLWithDirectory, byteCount: length) { parser, advance in
+                    try parser.readFileSystemRepresentation(isDirectory: isDirectory, advance: advance)
+                }
             }
         }
     }

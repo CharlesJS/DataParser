@@ -4,6 +4,13 @@ import PackageDescription
 
 let package = Package(
     name: "DataParser",
+    platforms: [
+        .macOS(.v10_13),
+        .iOS(.v11),
+        .tvOS(.v11),
+        .watchOS(.v4),
+        .macCatalyst(.v13)
+    ],
     products: [
         .library(
             name: "DataParser",
@@ -18,7 +25,7 @@ let package = Package(
     targets: [
         .target(
             name: "DataParser",
-            dependencies: ["Internal"]
+            dependencies: []
         ),
         .testTarget(
             name: "DataParserTests",
@@ -31,10 +38,6 @@ let package = Package(
         .testTarget(
             name: "DataParserFoundationTests",
             dependencies: ["TestHelper", "DataParser_Foundation"]
-        ),
-        .target(
-            name: "Internal",
-            dependencies: []
         ),
         .target(
             name: "TestHelper",

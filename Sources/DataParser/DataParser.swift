@@ -4,8 +4,6 @@
 //  Created by Charles Srstka on 11/11/15.
 //
 
-import Internal
-
 public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     private let data: DataType
     private var _cursor: DataType.Index
@@ -147,7 +145,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         byteOrder: ByteOrder,
         advance: Bool = true
     ) throws -> T {
-        if size > MemoryLayout<T>.size { throw DataParserError.invalidArgument }
+        guard size <= MemoryLayout<T>.size else { throw DataParserError.invalidArgument }
 
         var i: T = 0
 
@@ -167,10 +165,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     }
 
     private mutating func _swap(_ buf: UnsafeMutableRawBufferPointer, size: Int) throws {
-        guard let dst = buf.baseAddress, size != 0 else { return }
+        assert(buf.baseAddress != nil && size != 0)
 
         for i in (0..<size).reversed() {
-            dst.storeBytes(of: try self.readByte(advance: true), toByteOffset: i, as: UInt8.self)
+            buf.baseAddress!.storeBytes(of: try self.readByte(advance: true), toByteOffset: i, as: UInt8.self)
         }
     }
 
@@ -248,22 +246,23 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         return try ContiguousArray<Element>(unsafeUninitializedCapacity: count) { outBuffer, outCount in
             defer { outCount = count }
 
-            if byteOrder.isHost || elementSize == 1 {
-                try self.copyToBuffer(UnsafeMutableRawBufferPointer(outBuffer), byteCount: byteCount, advance: advance)
-            } else {
-                try self._makeAtomic(advance: advance) { parser in
-                    do {
+            do {
+                if byteOrder.isHost || elementSize == 1 {
+                    try self.copyToBuffer(UnsafeMutableRawBufferPointer(outBuffer), byteCount: byteCount, advance: advance)
+                } else {
+                    try self._makeAtomic(advance: advance) { parser in
                         for i in outBuffer.indices {
                             outBuffer[i] = try parser.readInt(ofType: Element.self, byteOrder: byteOrder, advance: true)
                         }
-                    } catch {
-                        for i in outBuffer.indices {
-                            outBuffer[i] = 0
-                        }
-
-                        throw error
                     }
                 }
+            } catch {
+                // Per ContiguousArray's API contract, make sure all memory is initialized even in case of an error.
+                for i in outBuffer.indices {
+                    outBuffer[i] = 0
+                }
+
+                throw error
             }
         }
     }
@@ -273,18 +272,18 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     }
 
     public mutating func readUTF8String(byteCount: some BinaryInteger, advance: Bool = true) throws -> String {
-        if #available(macOS 11.0, *) {
-            let byteCount = Int(byteCount)
-
-            return try String(unsafeUninitializedCapacity: byteCount) {
-                try self.copyToBuffer($0, count: byteCount, advance: advance)
-
-                return byteCount
-            }
-        } else {
+        guard #available(macOS 11.0, iOS 14.0, watchOS 7.0, tvOS 14.0, macCatalyst 14.0, *), versionCheck(11) else {
             let codeUnits = try self.readArray(count: byteCount, ofType: UInt8.self, byteOrder: .host, advance: advance)
 
             return String(decoding: codeUnits, as: UTF8.self)
+        }
+
+        let byteCount = Int(byteCount)
+
+        return try String(unsafeUninitializedCapacity: byteCount) {
+            try self.copyToBuffer($0, count: byteCount, advance: advance)
+
+            return byteCount
         }
     }
 
@@ -303,26 +302,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             return string
         }
     }
-
-    private mutating func readCStringBytes(
-        requireNullTerminator: Bool = true,
-        advance: Bool = true
-    ) throws -> ContiguousArray<UInt8> {
-        try self._makeAtomic(advance: advance) { parser in
-            let (length: byteCount, hasTerminator: hasTerminator) = try parser.getCStringLength(
-                requireNullTerminator: requireNullTerminator
-            )
-
-            let bytes = try parser.readBytes(count: byteCount, advance: advance)
-
-            if advance && hasTerminator {
-                try parser.skipBytes(1)
-            }
-
-            return bytes
-        }
-    }
-
+    
     public func getCStringLength(requireNullTerminator: Bool = true) throws -> (length: Int, hasTerminator: Bool) {
         let nullIndex: DataType.Index?
         if let index = self.data[self._cursor...].firstIndex(where: { $0 == 0 }) {
@@ -347,7 +327,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         let byteCount = Int(byteCount)
         let startIndex = self._cursor
 
-        if self.data.distance(from: startIndex, to: self.data.endIndex) < byteCount {
+        guard self.data.distance(from: startIndex, to: self.data.endIndex) >= byteCount else {
             throw DataParserError.outOfBounds
         }
 
@@ -367,12 +347,10 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             if advance {
                 self._cursor = endIndex
             }
-        } else if try self.data[startIndex..<endIndex].withContiguousStorageIfAvailable({
-            guard let srcPointer = $0.baseAddress, $0.count >= byteCount else {
-                throw DataParserError.outOfBounds
-            }
+        } else if self.data[startIndex..<endIndex].withContiguousStorageIfAvailable({ buf in
+            assert(buf.count >= byteCount)
 
-            destPointer.copyMemory(from: srcPointer, byteCount: byteCount)
+            destPointer.copyMemory(from: buf.baseAddress!, byteCount: byteCount)
 
 #if DEBUG
             self.accessCounts[.pointerAccess, default: 0] += 1
@@ -461,18 +439,19 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         closure: (inout DataParser<DataType>) throws -> T
     ) rethrows -> T {
         let startingCursor = self._cursor
+        let ret: T
 
         do {
-            let ret = try closure(&self)
+            ret = try closure(&self)
 
             if !advance {
                 self._cursor = startingCursor
             }
-
-            return ret
         } catch {
             self._cursor = startingCursor
             throw error
         }
+
+        return ret
     }
 }

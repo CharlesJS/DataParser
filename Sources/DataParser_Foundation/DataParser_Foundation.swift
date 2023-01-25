@@ -12,17 +12,20 @@ extension DataParser {
     public mutating func readData(count: some BinaryInteger, advance: Bool = true) throws -> Data {
         let count = Int(count)
         let ptr = UnsafeMutablePointer<UInt8>.allocate(capacity: count)
+        let data: Data
 
         do {
             try self.copyToPointer(ptr, count: count, advance: advance)
 
-            return Data(bytesNoCopy: ptr, count: count, deallocator: .custom { ptr, _ in
+            data = Data(bytesNoCopy: ptr, count: count, deallocator: .custom { ptr, _ in
                 ptr.deallocate()
             })
         } catch {
             ptr.deallocate()
             throw error
         }
+
+        return data
     }
 
     public mutating func readDataToEnd(advance: Bool = true) throws -> Data {
@@ -79,13 +82,15 @@ extension DataParser {
     
     private func string(from data: Data, requireNullTerminator: Bool, encoding: String.Encoding) throws -> String {
         let nullIdx: Data.Index = try {
-            if let idx = data.firstIndex(where: { $0 == 0 }) {
-                return idx
-            } else if requireNullTerminator {
-                throw CocoaError(.fileReadCorruptFile)
-            } else {
+            guard let idx = data.firstIndex(where: { $0 == 0 }) else {
+                if requireNullTerminator {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+
                 return data.endIndex
             }
+
+            return idx
         }()
 
         switch encoding {
@@ -118,17 +123,17 @@ extension DataParser {
                     }
 
                     return url as URL
-                } else {
-                    let path: String
-
-                    if let ptr = bytes.bindMemory(to: Int8.self).baseAddress {
-                        path = FileManager.default.string(withFileSystemRepresentation: ptr, length: bytes.count)
-                    } else {
-                        throw CocoaError(.fileReadUnknown)
-                    }
-
-                    return URL(fileURLWithPath: path)
                 }
+
+                let path: String
+
+                if bytes.count != 0, let ptr = bytes.bindMemory(to: Int8.self).baseAddress {
+                    path = FileManager.default.string(withFileSystemRepresentation: ptr, length: bytes.count)
+                } else {
+                    throw CocoaError(.fileReadUnknown)
+                }
+
+                return URL(fileURLWithPath: path)
             }
         }
     }

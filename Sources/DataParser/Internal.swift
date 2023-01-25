@@ -1,22 +1,37 @@
 //
-//  HasContiguousRegions.swift
+//  Internal.swift
 //  
 //
 //  Created by Charles Srstka on 3/12/22.
 //
 
-public protocol _ContiguousRegion {
+#if DEBUG
+// To be used during testing only!
+func emulateMacOSVersion(_ vers: Int, closure: () throws -> ()) rethrows {
+    defer { emulatedVersion = Int.max }
+    emulatedVersion = vers
+
+    try closure()
+}
+
+private var emulatedVersion = Int.max
+@_spi(CSErrorsInternal) public func versionCheck(_ vers: Int) -> Bool { emulatedVersion >= vers }
+#else
+@inline(__always) func versionCheck(_: Int) -> Bool { true }
+#endif
+
+@_spi(DataParserInternal) public protocol _ContiguousRegion {
     func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R
     func startIndex<C: Collection>(for collection: C) -> C.Index
     func endIndex<C: Collection>(for collection: C) -> C.Index
 }
 
-public protocol _HasContiguousRegions {
+@_spi(DataParserInternal) public protocol _HasContiguousRegions {
     var contiguousRegions: [_ContiguousRegion] { get }
 }
 
 extension _HasContiguousRegions {
-    public func copyMemory<C: Collection>(
+    internal func copyMemory<C: Collection>(
         to pointer: UnsafeMutableRawPointer,
         from collection: C,
         range: Range<C.Index>
