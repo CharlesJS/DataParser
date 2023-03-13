@@ -415,7 +415,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
 
         try self._makeAtomic(advance: advance) { parser in
             try withUnsafeMutablePointer(to: &destTuple) {
-                try $0.withMemoryRebound(to: unitType, capacity: unitCount) {
+                try $0.withMemoryRebound(to: unitType, capacity: unitCount + startIndex) {
                     let stride = MemoryLayout<I>.stride
 
                     if stride == 1 {
