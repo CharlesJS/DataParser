@@ -17,7 +17,7 @@ let package = Package(
             targets: ["DataParser"]
         ),
         .library(
-            name: "DataParser (using Foundation)",
+            name: "DataParser+Foundation",
             targets: ["DataParser", "DataParser_Foundation"]
         ),
     ],
