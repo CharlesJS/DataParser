@@ -267,6 +267,49 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         }
     }
 
+    public mutating func withUnsafeBytes<T>(
+        count: Int,
+        advance: Bool,
+        closure: (UnsafeRawBufferPointer) -> T
+    ) throws -> T {
+        let startIndex = self._cursor
+
+        guard self.data.distance(from: startIndex, to: self.data.endIndex) >= count else {
+            throw DataParserError.outOfBounds
+        }
+
+        let endIndex = self.data.index(startIndex, offsetBy: count)
+        let range = startIndex..<endIndex
+
+        if let hasContiguousRegions = self.data as? _HasContiguousRegions,
+           let returnValue = hasContiguousRegions.withContiguousRegion(range: range, in: self.data, closure: closure) {
+#if DEBUG
+            self.accessCounts[.pointerAccess, default: 0] += 1
+#endif
+
+            if advance { try self.skipBytes(count) }
+
+            return returnValue
+        }
+
+        if let returnValue = self.data.withContiguousStorageIfAvailable({
+            let ptr = $0.baseAddress!.advanced(by: self.data.distance(from: self.data.startIndex, to: startIndex))
+            let buf = UnsafeRawBufferPointer(start: ptr, count: count)
+
+            return closure(buf)
+        }) {
+#if DEBUG
+            self.accessCounts[.pointerAccess, default: 0] += 1
+#endif
+
+            if advance { try self.skipBytes(count) }
+
+            return returnValue
+        }
+
+        return try self.readBytes(count: count, advance: advance).withUnsafeBytes(closure)
+    }
+
     public mutating func readBytesToEnd(advance: Bool = true) throws -> ContiguousArray<UInt8> {
         try self.readBytes(count: self.bytesLeft, advance: advance)
     }

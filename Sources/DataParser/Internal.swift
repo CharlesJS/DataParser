@@ -63,4 +63,26 @@ extension _HasContiguousRegions {
 
         return (bytesLeft == 0)
     }
+
+    internal func withContiguousRegion<C: Collection, T>(
+        range: Range<C.Index>,
+        in collection: C,
+        closure: (UnsafeRawBufferPointer) throws -> T
+    ) rethrows -> T? {
+        for eachRegion in self.contiguousRegions {
+            let regionStart = eachRegion.startIndex(for: collection)
+            let regionEnd = eachRegion.endIndex(for: collection)
+
+            if regionStart <= range.lowerBound && regionEnd >= range.upperBound {
+                let offset = collection.distance(from: regionStart, to: range.lowerBound)
+                let count = collection.distance(from: range.lowerBound, to: range.upperBound)
+
+                return try eachRegion.withUnsafeBytes {
+                    try closure(UnsafeRawBufferPointer(start: $0.baseAddress! + offset, count: count))
+                }
+            }
+        }
+
+        return nil
+    }
 }

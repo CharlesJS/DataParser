@@ -48,6 +48,7 @@ public struct TestHelper {
 
         try testParseNumericData(parser: numericParser, expectPointerAccess: expectPointerAccess)
         try testParseStringData(parser: stringParser, expectPointerAccess: expectPointerAccess)
+        try testParseRawStructs(expectPointerAccess: expectPointerAccess, closure: closure)
         try testCursorMutation(closure: closure)
         try testOverflowErrors(closure: closure)
     }
@@ -65,6 +66,59 @@ public struct TestHelper {
 
     private static func testParseStringData<T>(parser: DataParser<T>, expectPointerAccess: Bool) throws {
         try testReadingStrings(parser: parser, expectPointerAccess: expectPointerAccess)
+    }
+
+    private static func testParseRawStructs<T>(expectPointerAccess: Bool, closure: ([UInt8]) -> DataParser<T>) throws {
+        var testSockaddr = sockaddr_in(
+            sin_len: 0x12,
+            sin_family: 0x34,
+            sin_port: 0x5678,
+            sin_addr: .init(s_addr: 0x9abcdef0),
+            sin_zero: (1, 2, 3, 4, 5, 6, 7, 8)
+        )
+
+        var testRange: Range<UInt64> = (0x98765432..<0xfedcba98)
+        var testRect = NSRect(origin: NSPoint(x: 0x1234, y: 0x5678), size: NSSize(width: 0x9abc, height: 0xdef0))
+
+        var data: [UInt8] = []
+
+        withUnsafeBytes(of: &testSockaddr) { data += $0 }
+        withUnsafeBytes(of: &testRange) { data += $0 }
+        withUnsafeBytes(of: &testRect) { data += $0 }
+
+        var parser = closure(data)
+
+        try self.testRawRead(parser: &parser, expect: testSockaddr)
+        try self.testRawRead(parser: &parser, expect: testRange)
+
+        let cursorBeforeThrow = parser.cursor
+        XCTAssertThrowsError(try parser.withUnsafeBytes(count: MemoryLayout<NSRect>.size + 1, advance: true) { _ in }) {
+            XCTAssertEqual($0 as? DataParserError, .outOfBounds)
+        }
+        XCTAssertEqual(parser.cursor, cursorBeforeThrow)
+
+        try self.testRawRead(parser: &parser, expect: testRect)
+
+        try self.checkPointerAccess(
+            parser: parser,
+            rawDataAccesses: 3,
+            rawDataBytes: MemoryLayout<sockaddr_in>.size + MemoryLayout<Range<UInt64>>.size + MemoryLayout<NSRect>.size,
+            expectPointerAccess: expectPointerAccess
+        )
+    }
+
+    private static func testRawRead<S, T>(parser: inout DataParser<T>, expect: S) throws {
+        var expectedValue = expect
+
+        try withUnsafeBytes(of: &expectedValue) { expectedBuffer in
+            try parser.withUnsafeBytes(count: expectedBuffer.count, advance: false) {
+                XCTAssertEqual(Data($0), Data(expectedBuffer))
+            }
+
+            try parser.withUnsafeBytes(count: expectedBuffer.count, advance: true) {
+                XCTAssertEqual(Data($0), Data(expectedBuffer))
+            }
+        }
     }
 
     private static func testCursorMutation<T>(closure: ([UInt8]) -> DataParser<T>) throws {
