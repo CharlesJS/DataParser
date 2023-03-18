@@ -269,7 +269,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
 
     public mutating func withUnsafeBytes<T>(
         count: Int,
-        advance: Bool,
+        advance: Bool = true,
         closure: (UnsafeRawBufferPointer) -> T
     ) throws -> T {
         let startIndex = self._cursor
