@@ -6,7 +6,7 @@
 //
 
 import Foundation
-@_spi(DataParserInternal) import DataParser
+import DataParser
 
 extension DataParser {
     public mutating func readData(count: some BinaryInteger, advance: Bool = true) throws -> Data {

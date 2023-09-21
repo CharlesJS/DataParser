@@ -477,7 +477,7 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         }
     }
 
-    @_spi(DataParserInternal) public mutating func _makeAtomic<T>(
+    package mutating func _makeAtomic<T>(
         advance: Bool,
         closure: (inout DataParser<DataType>) throws -> T
     ) rethrows -> T {

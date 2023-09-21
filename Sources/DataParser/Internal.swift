@@ -15,18 +15,18 @@ func emulateMacOSVersion(_ vers: Int, closure: () throws -> ()) rethrows {
 }
 
 private var emulatedVersion = Int.max
-@_spi(CSErrorsInternal) public func versionCheck(_ vers: Int) -> Bool { emulatedVersion >= vers }
+package func versionCheck(_ vers: Int) -> Bool { emulatedVersion >= vers }
 #else
 @inline(__always) func versionCheck(_: Int) -> Bool { true }
 #endif
 
-@_spi(DataParserInternal) public protocol _ContiguousRegion {
+package protocol _ContiguousRegion {
     func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R
     func startIndex<C: Collection>(for collection: C) -> C.Index
     func endIndex<C: Collection>(for collection: C) -> C.Index
 }
 
-@_spi(DataParserInternal) public protocol _HasContiguousRegions {
+package protocol _HasContiguousRegions {
     var contiguousRegions: [_ContiguousRegion] { get }
 }
 

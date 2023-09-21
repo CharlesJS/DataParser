@@ -1,6 +1,7 @@
 import XCTest
-@_spi(DataParserInternal) @testable import DataParser
+@testable import DataParser
 
+@available(macOS 13.0, *)
 public struct TestHelper {
     private static let numericTestData: [UInt8] = [
         0x12,                                                // ASCII byte
@@ -584,7 +585,7 @@ public struct TestHelper {
         }
 
         testFailure(&parser, expectedError: DataParserError.invalidArgument, reason: "Unsupported floating-point type") {
-            _ = try $0.readFloat(ofType: Float80.self, byteOrder: .little)
+            _ = try $0.readFloat(ofType: Float16.self, byteOrder: .little)
         }
     }
 
