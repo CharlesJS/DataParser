@@ -215,4 +215,22 @@ final class DataTests: XCTestCase {
             }
         }
     }
+
+    func testReadUUID() throws {
+        let data = Data([
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+            0xff, 0xfe, 0xfd, 0xfc, 0xaa, 0xa9, 0xa8, 0xa7, 0xb0, 0xb1, 0xb2, 0xb3, 0xc4, 0xc3, 0xc2, 0xc1
+        ])
+
+        var parser = DataParser(data)
+
+        let uuid1 = UUID(uuid: uuid_t(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
+        let uuid2 = UUID(
+            uuid: uuid_t(0xff, 0xfe, 0xfd, 0xfc, 0xaa, 0xa9, 0xa8, 0xa7, 0xb0, 0xb1, 0xb2, 0xb3, 0xc4, 0xc3, 0xc2, 0xc1)
+        )
+
+        XCTAssertEqual(try parser.readUUID(advance: false), uuid1)
+        XCTAssertEqual(try parser.readUUID(advance: true), uuid1)
+        XCTAssertEqual(try parser.readUUID(advance: true), uuid2)
+    }
 }

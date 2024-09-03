@@ -144,4 +144,13 @@ extension DataParser {
             return try parser.readString(byteCount: Int(count), encoding: encoding, advance: advance)
         }
     }
+
+    public mutating func readUUID(advance: Bool = true) throws -> UUID {
+        var uuid = uuid_t(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        try withUnsafeMutableBytes(of: &uuid) { buf in
+            try self.copyToBuffer(buf, byteCount: MemoryLayout<uuid_t>.size, advance: advance)
+        }
+
+        return UUID(uuid: uuid)
+    }
 }
