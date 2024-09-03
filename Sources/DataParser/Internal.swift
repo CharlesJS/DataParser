@@ -14,7 +14,7 @@ func emulateMacOSVersion(_ vers: Int, closure: () throws -> ()) rethrows {
     try closure()
 }
 
-private var emulatedVersion = Int.max
+nonisolated(unsafe) private var emulatedVersion = Int.max
 package func versionCheck(_ vers: Int) -> Bool { emulatedVersion >= vers }
 #else
 @inline(__always) func versionCheck(_: Int) -> Bool { true }

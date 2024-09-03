@@ -941,7 +941,7 @@ public struct TestHelper {
         let cursor = parser.cursor
         let bytesLeft = parser.bytesLeft
 
-        XCTAssertThrowsError(_ = try closure(&parser), reason, file: file, line: line) {
+        XCTAssertThrowsError(_ = try closure(&parser), reason, file: (file), line: line) {
             XCTAssertEqual($0 as? ErrorType, expectedError)
         }
 
@@ -949,7 +949,7 @@ public struct TestHelper {
             parser.cursor,
             cursor,
             "Cursor should not change if an error is thrown during reading",
-            file: file,
+            file: (file),
             line: line
         )
 
@@ -957,7 +957,7 @@ public struct TestHelper {
             parser.bytesLeft,
             bytesLeft,
             "Bytes left should not change if an error is thrown during reading",
-            file: file,
+            file: (file),
             line: line
         )
     }
@@ -975,36 +975,36 @@ public struct TestHelper {
         let bytesLeft = parser.bytesLeft
 
         let nonAdvanceValue = try run(&parser, false)
-        XCTAssert(try expect(nonAdvanceValue), failureMessage(nonAdvanceValue), file: file, line: line)
+        XCTAssert(try expect(nonAdvanceValue), failureMessage(nonAdvanceValue), file: (file), line: line)
 
         XCTAssert(
             parser.cursor == cursor,
             "Cursor changed from \(cursor) to \(parser.cursor) despite advance == false",
-            file: file,
+            file: (file),
             line: line
         )
 
         XCTAssert(
             parser.bytesLeft == bytesLeft,
             "Bytes left changed from \(bytesLeft) to \(parser.bytesLeft) despite advance == false",
-            file: file,
+            file: (file),
             line: line
         )
 
         let advanceValue = try run(&parser, true)
-        XCTAssert(try expect(advanceValue), failureMessage(advanceValue), file: file, line: line)
+        XCTAssert(try expect(advanceValue), failureMessage(advanceValue), file: (file), line: line)
 
         XCTAssert(
             parser.cursor == cursor + byteCount,
             "Cursor is \(parser.cursor); expected \(cursor + byteCount)",
-            file: file,
+            file: (file),
             line: line
         )
 
         XCTAssert(
             parser.bytesLeft == bytesLeft - byteCount,
             "Bytes left is \(parser.bytesLeft); expected \(bytesLeft - byteCount)",
-            file: file,
+            file: (file),
             line: line
         )
     }

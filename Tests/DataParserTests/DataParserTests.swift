@@ -51,7 +51,7 @@ final class DataParserTests: XCTestCase {
             cleanup.append { ptr.deallocate() }
 
             bytes.withUnsafeBytes {
-                $0.withMemoryRebound(to: UInt8.self) { ptr.assign(from: $0.baseAddress!, count: $0.count) }
+                $0.withMemoryRebound(to: UInt8.self) { ptr.update(from: $0.baseAddress!, count: $0.count) }
             }
 
             return DataParser(pointer: ptr, count: bytes.count)
@@ -62,7 +62,7 @@ final class DataParserTests: XCTestCase {
             cleanup.append { ptr.deallocate() }
 
             bytes.withUnsafeBytes {
-                $0.withMemoryRebound(to: UInt8.self) { ptr.assign(from: $0.baseAddress!, count: $0.count) }
+                $0.withMemoryRebound(to: UInt8.self) { ptr.update(from: $0.baseAddress!, count: $0.count) }
             }
 
             return DataParser(pointer: UnsafePointer(ptr), count: bytes.count)
