@@ -1,30 +1,30 @@
-import XCTest
+import Testing
 import TestHelper
 @testable import DataParser
 
-final class DataParserTests: XCTestCase {
-    func testByteOrders() {
-        XCTAssertTrue(ByteOrder.big.isBig)
-        XCTAssertFalse(ByteOrder.big.isLittle)
+@Suite struct DataParserTests {
+    @Test func testByteOrders() {
+        #expect(ByteOrder.big.isBig)
+        #expect(!ByteOrder.big.isLittle)
 
-        XCTAssertFalse(ByteOrder.little.isBig)
-        XCTAssertTrue(ByteOrder.little.isLittle)
+        #expect(!ByteOrder.little.isBig)
+        #expect(ByteOrder.little.isLittle)
 
         if UInt16(littleEndian: 0x1234) == 0x1234 {
-            XCTAssertFalse(ByteOrder.host.isBig)
-            XCTAssertTrue(ByteOrder.host.isLittle)
+            #expect(!ByteOrder.host.isBig)
+            #expect(ByteOrder.host.isLittle)
         } else {
-            XCTAssertTrue(ByteOrder.host.isBig)
-            XCTAssertFalse(ByteOrder.host.isLittle)
+            #expect(ByteOrder.host.isBig)
+            #expect(!ByteOrder.host.isLittle)
         }
     }
 
-    func testParseByteArrays() throws {
+    @Test func testParseByteArrays() throws {
         try TestHelper.runParserTests(expectPointerAccess: true) { DataParser($0) }
         try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(ContiguousArray($0)) }
     }
 
-    func testPointers() throws {
+    @Test func testPointers() throws {
         var cleanup: [() -> Void] = []
         defer { cleanup.forEach { $0() } }
 
@@ -105,7 +105,7 @@ final class DataParserTests: XCTestCase {
         }
     }
 
-    func testGenericCollections() throws {
+    @Test func testGenericCollections() throws {
         try TestHelper.runParserTests(expectPointerAccess: false) { DataParser(AnyCollection($0)) }
     }
 }

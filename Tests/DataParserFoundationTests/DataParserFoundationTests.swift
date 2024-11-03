@@ -1,22 +1,22 @@
-import XCTest
+import Testing
 import Foundation
 import TestHelper
 import DataParser
 @testable import DataParser_Foundation
 
-final class DataTests: XCTestCase {
-    func testData() throws {
+@Suite struct DataTests {
+    @Test func testData() throws {
         try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(Data($0)) }
         try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(Data($0) as NSData) }
     }
 
-    func testDispatchData() throws {
+    @Test func testDispatchData() throws {
         try TestHelper.runParserTests(expectPointerAccess: true) {
             $0.withUnsafeBytes { DataParser(DispatchData(bytes: $0)) }
         }
     }
 
-    func testNonContiguousDispatchData() throws {
+    @Test func testNonContiguousDispatchData() throws {
         try TestHelper.runParserTests(expectPointerAccess: true) { bytes -> DataParser<DispatchData> in
             let cutoffs = [0x4, 0x8, 0xe, 0x18, 0x21, 0x22, 0x29, 0x2e, 0x36, 0x41, 0x50].filter { $0 < bytes.count }
             var data = DispatchData.empty
@@ -34,7 +34,7 @@ final class DataTests: XCTestCase {
         }
     }
 
-    func testReadingData() throws {
+    @Test func testReadingData() throws {
         var parser = DataParser([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a])
 
         TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) {
@@ -58,7 +58,7 @@ final class DataTests: XCTestCase {
         }
     }
 
-    func testStringEncodings() throws {
+    @Test func testStringEncodings() throws {
         let string = "Tëstíñg Tê§†ing"
 
         let encodings: [String.Encoding] = [.nextstep, .utf8, .utf16, .windowsCP1252, .windowsCP1254, .macOSRoman]
@@ -163,7 +163,7 @@ final class DataTests: XCTestCase {
         }
     }
 
-    func testReadFileSystemRepresentation() throws {
+    @Test func testReadFileSystemRepresentation() throws {
         let paths: [(path: String, isDirectory: Bool, (any Error & Equatable)?)] = [
             ("/bin", true, nil),
             ("/usr/bin/true", false, nil),
@@ -220,7 +220,7 @@ final class DataTests: XCTestCase {
         }
     }
 
-    func testReadUUID() throws {
+    @Test func testReadUUID() throws {
         let data = Data([
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
             0xff, 0xfe, 0xfd, 0xfc, 0xaa, 0xa9, 0xa8, 0xa7, 0xb0, 0xb1, 0xb2, 0xb3, 0xc4, 0xc3, 0xc2, 0xc1
@@ -233,8 +233,8 @@ final class DataTests: XCTestCase {
             uuid: uuid_t(0xff, 0xfe, 0xfd, 0xfc, 0xaa, 0xa9, 0xa8, 0xa7, 0xb0, 0xb1, 0xb2, 0xb3, 0xc4, 0xc3, 0xc2, 0xc1)
         )
 
-        XCTAssertEqual(try parser.readUUID(advance: false), uuid1)
-        XCTAssertEqual(try parser.readUUID(advance: true), uuid1)
-        XCTAssertEqual(try parser.readUUID(advance: true), uuid2)
+        #expect(try parser.readUUID(advance: false) == uuid1)
+        #expect(try parser.readUUID(advance: true) == uuid1)
+        #expect(try parser.readUUID(advance: true) == uuid2)
     }
 }
