@@ -1,13 +1,13 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.0
 
 import PackageDescription
 
 let package = Package(
     name: "DataParser",
     platforms: [
-        .macOS(.v10_13),
-        .iOS(.v11),
-        .tvOS(.v11),
+        .macOS(.v10_15),
+        .iOS(.v12),
+        .tvOS(.v12),
         .watchOS(.v4),
         .macCatalyst(.v13)
     ],

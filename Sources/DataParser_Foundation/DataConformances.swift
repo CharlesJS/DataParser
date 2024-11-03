@@ -8,24 +8,24 @@
 import Foundation
 import DataParser
 
-extension Data: @retroactive _ContiguousRegion {
+extension Data: _ContiguousRegion {
     package func startIndex<C>(for collection: C) -> C.Index where C : Collection { self.startIndex as! C.Index }
     package func endIndex<C>(for collection: C) -> C.Index where C : Collection { self.endIndex as! C.Index }
 }
 
-extension Data: @retroactive _HasContiguousRegions {
+extension Data: _HasContiguousRegions {
     package var contiguousRegions: [_ContiguousRegion] { self.regions.map { $0 } }
 }
 
-extension NSData: @retroactive _HasContiguousRegions {
+extension NSData: _HasContiguousRegions {
     package var contiguousRegions: [_ContiguousRegion] { self.regions.map { $0 } }
 }
 
-extension DispatchData.Region: @retroactive _ContiguousRegion {
+extension DispatchData.Region: _ContiguousRegion {
     package func startIndex<C>(for collection: C) -> C.Index where C : Collection { self.startIndex as! C.Index }
     package func endIndex<C>(for collection: C) -> C.Index where C : Collection { self.endIndex as! C.Index }
 }
 
-extension DispatchData: @retroactive _HasContiguousRegions {
+extension DispatchData: _HasContiguousRegions {
     package var contiguousRegions: [_ContiguousRegion] { self.regions.map { $0 } }
 }
