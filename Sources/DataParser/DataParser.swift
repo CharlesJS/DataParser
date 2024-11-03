@@ -345,6 +345,23 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
             return string
         }
     }
+
+    public mutating func readUTF8CString(
+        byteCount: some BinaryInteger,
+        requireNullTerminator: Bool = true,
+        advance: Bool = true
+    ) throws -> String {
+        try self._makeAtomic(advance: advance) { parser in
+            let bytes = try parser.readBytes(count: byteCount, advance: advance)
+            let terminatorIndex = bytes.firstIndex(of: 0)
+
+            if requireNullTerminator && terminatorIndex == nil {
+                throw DataParserError.outOfBounds
+            }
+
+            return String(decoding: bytes[..<(terminatorIndex ?? bytes.endIndex)], as: UTF8.self)
+        }
+    }
     
     public func getCStringLength(requireNullTerminator: Bool = true) throws -> (length: Int, hasTerminator: Bool) {
         let nullIndex: DataType.Index?

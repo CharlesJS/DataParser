@@ -37,7 +37,9 @@ final class DataTests: XCTestCase {
     func testReadingData() throws {
         var parser = DataParser([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a])
 
-        TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) { try $0.readData(count: 12) }
+        TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) {
+            try $0.readData(count: 12, advance: $1)
+        }
 
         try TestHelper.testRead(&parser, expect: Data([0x00, 0x01, 0x02]), byteCount: 3) { parser, advance in
             try parser.readData(count: 3, advance: advance)
@@ -51,7 +53,9 @@ final class DataTests: XCTestCase {
             try parser.readDataToEnd(advance: advance)
         }
 
-        TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) { try $0.readData(count: 1) }
+        TestHelper.testFailure(&parser, expectedError: DataParserError.outOfBounds) {
+            try $0.readData(count: 1, advance: $1)
+        }
     }
 
     func testStringEncodings() throws {
@@ -86,15 +90,15 @@ final class DataTests: XCTestCase {
         var pascalStringParser = DataParser(pascalStringData)
 
         TestHelper.testFailure(&rawParser, expectedError: DataParserError.outOfBounds) {
-            try $0.readString(byteCount: rawData.count + 1, encoding: .utf8)
+            try $0.readString(byteCount: rawData.count + 1, encoding: .utf8, advance: $1)
         }
 
         TestHelper.testFailure(&cStringParser, expectedError: DataParserError.outOfBounds) {
-            try $0.readCString(byteCount: cStringData.count + 1, requireNullTerminator: true, encoding: .utf8)
+            try $0.readCString(byteCount: cStringData.count + 1, requireNullTerminator: true, encoding: .utf8, advance: $1)
         }
 
         TestHelper.testFailure(&cStringParser, expectedError: DataParserError.outOfBounds) {
-            try $0.readCString(byteCount: cStringData.count + 1, requireNullTerminator: false, encoding: .utf8)
+            try $0.readCString(byteCount: cStringData.count + 1, requireNullTerminator: false, encoding: .utf8, advance: $1)
         }
 
         for (encoding, length) in zip(encodings, lengths) {
@@ -116,7 +120,7 @@ final class DataTests: XCTestCase {
                     &cStringParser,
                     expectedError: CocoaError(.fileReadInapplicableStringEncoding),
                     reason: "Should fail if the string cannot be rendered in the requested encoding"
-                ) { try $0.readCString(encoding: .nonLossyASCII) }
+                ) { try $0.readCString(encoding: .nonLossyASCII, advance: $1) }
 
                 try TestHelper.testRead(&cStringParser, expect: string, byteCount: length + 1) { parser, advance in
                     try parser.readCString(
@@ -140,14 +144,14 @@ final class DataTests: XCTestCase {
                     &rawParser,
                     expectedError: CocoaError(.fileReadCorruptFile),
                     reason: "Should fail because there are no terminator bytes in the data"
-                ) { try $0.readCString(byteCount: length, requireNullTerminator: true, encoding: encoding) }
+                ) { try $0.readCString(byteCount: length, requireNullTerminator: true, encoding: encoding, advance: $1) }
             }
 
             TestHelper.testFailure(
                 &rawParser,
                 expectedError: CocoaError(.fileReadInapplicableStringEncoding),
                 reason: "Should fail if the string cannot be rendered in the requested encoding"
-            ) { try $0.readString(byteCount: length, encoding: .nonLossyASCII) }
+            ) { try $0.readString(byteCount: length, encoding: .nonLossyASCII, advance: $1) }
 
             try TestHelper.testRead(&rawParser, expect: string, byteCount: length) { parser, advance in
                 try parser.readString(byteCount: length, encoding: encoding, advance: advance)
@@ -192,12 +196,12 @@ final class DataTests: XCTestCase {
 
         for ((path, isDirectory, err), length) in zip(paths, lengths) {
             if let err {
-                TestHelper.testFailure(&parser, expectedError: err) { parser in
-                    try parser.readFileSystemRepresentation(isDirectory: isDirectory)
+                TestHelper.testFailure(&parser, expectedError: err) {
+                    try $0.readFileSystemRepresentation(isDirectory: isDirectory, advance: $1)
                 }
 
-                TestHelper.testFailure(&parser, expectedError: err) { parser in
-                    try parser.readFileSystemRepresentation(isDirectory: nil)
+                TestHelper.testFailure(&parser, expectedError: err) {
+                    try $0.readFileSystemRepresentation(isDirectory: nil, advance: $1)
                 }
 
                 try parser.skipBytes(length)
