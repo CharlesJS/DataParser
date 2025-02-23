@@ -1,4 +1,4 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.1
 
 import PackageDescription
 
@@ -16,10 +16,9 @@ let package = Package(
             name: "DataParser",
             targets: ["DataParser"]
         ),
-        .library(
-            name: "DataParser+Foundation",
-            targets: ["DataParser", "DataParser_Foundation"]
-        ),
+    ],
+    traits: [
+        "Foundation",
     ],
     dependencies: [],
     targets: [
@@ -29,19 +28,7 @@ let package = Package(
         ),
         .testTarget(
             name: "DataParserTests",
-            dependencies: ["TestHelper"]
-        ),
-        .target(
-            name: "DataParser_Foundation",
             dependencies: ["DataParser"]
         ),
-        .testTarget(
-            name: "DataParserFoundationTests",
-            dependencies: ["TestHelper", "DataParser_Foundation"]
-        ),
-        .target(
-            name: "TestHelper",
-            dependencies: ["DataParser"]
-        )
     ]
 )

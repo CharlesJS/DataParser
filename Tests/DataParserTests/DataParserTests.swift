@@ -1,5 +1,4 @@
 import Testing
-import TestHelper
 @testable import DataParser
 
 @Suite struct DataParserTests {

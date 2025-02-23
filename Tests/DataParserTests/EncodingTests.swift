@@ -7,13 +7,18 @@
 
 import Testing
 import DataParser
+
+#if Foundation
 import Foundation
+#endif
 
 @Suite struct EncodingTests {
     @Test func testEncoding() {
         checkCollection([] as Array)
         checkCollection([] as ContiguousArray<UInt8>)
+#if Foundation
         checkCollection(Data())
+#endif
     }
 
     private func checkCollection(_ collection: some RangeReplaceableCollection<UInt8>) {

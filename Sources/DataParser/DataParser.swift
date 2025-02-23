@@ -4,6 +4,14 @@
 //  Created by Charles Srstka on 11/11/15.
 //
 
+#if Foundation
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
+#endif
+
 public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
     private let data: DataType
     private var _cursor: DataType.Index
@@ -281,16 +289,18 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
         let endIndex = self.data.index(startIndex, offsetBy: count)
         let range = startIndex..<endIndex
 
-        if let hasContiguousRegions = self.data as? _HasContiguousRegions,
-           let returnValue = hasContiguousRegions.withContiguousRegion(range: range, in: self.data, closure: closure) {
+#if Foundation
+        if let data = self.data as? any DataProtocol,
+           let returnValue = withUnsafeRegion(in: data, range: range, { closure($0) }) {
 #if DEBUG
             self.accessCounts[.pointerAccess, default: 0] += 1
 #endif
-
+            
             if advance { try self.skipBytes(count) }
 
             return returnValue
         }
+#endif
 
         if let returnValue = self.data.withContiguousStorageIfAvailable({
             let ptr = $0.baseAddress!.advanced(by: self.data.distance(from: self.data.startIndex, to: startIndex))
@@ -393,21 +403,19 @@ public struct DataParser<DataType: Collection> where DataType.Element == UInt8 {
 
         let endIndex = self.data.index(startIndex, offsetBy: byteCount)
 
-        if let hasContiguousRegions = self.data as? _HasContiguousRegions {
-            let range = startIndex..<endIndex
-
-            guard hasContiguousRegions.copyMemory(to: destPointer, from: self.data, range: range) else {
-                throw DataParserError.outOfBounds
-            }
-
+#if Foundation
+        if let data = self.data as? any DataProtocol, copyMemory(to: destPointer, from: data, range: startIndex..<endIndex) {
 #if DEBUG
             self.accessCounts[.pointerAccess, default: 0] += 1
 #endif
 
-            if advance {
-                self._cursor = endIndex
-            }
-        } else if self.data[startIndex..<endIndex].withContiguousStorageIfAvailable({ buf in
+            if advance { self._cursor = endIndex }
+
+            return
+        }
+#endif
+
+        if self.data[startIndex..<endIndex].withContiguousStorageIfAvailable({ buf in
             assert(buf.count >= byteCount)
 
             destPointer.copyMemory(from: buf.baseAddress!, byteCount: byteCount)

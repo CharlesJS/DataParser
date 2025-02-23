@@ -1,9 +1,15 @@
-import Foundation
 import Testing
 @testable import DataParser
 
-@available(macOS 13.0, *)
-public struct TestHelper {
+#if Foundation
+import Foundation
+#elseif canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+
+internal struct TestHelper {
     private static let numericTestData: [UInt8] = [
         0x12,                                                // ASCII byte
         0x34,                                                // another ASCII byte
@@ -84,19 +90,27 @@ public struct TestHelper {
         )
 
         var testRange: Range<UInt64> = (0x98765432..<0xfedcba98)
+#if Foundation
         var testRect = NSRect(origin: NSPoint(x: 0x1234, y: 0x5678), size: NSSize(width: 0x9abc, height: 0xdef0))
+#endif
 
         var data: [UInt8] = []
 
         withUnsafeBytes(of: &testSockaddr) { data += $0 }
         withUnsafeBytes(of: &testRange) { data += $0 }
+#if Foundation
         withUnsafeBytes(of: &testRect) { data += $0 }
+#endif
 
         var parser = closure(data)
 
         try self.testRawRead(parser: &parser, expect: testSockaddr)
         try self.testRawRead(parser: &parser, expect: testRange)
 
+        var rawDataAccesses = 2
+        var rawDataBytes = MemoryLayout<sockaddr_in>.size + MemoryLayout<Range<UInt64>>.size
+
+#if Foundation
         let cursorBeforeThrow = parser.cursor
         #expect(throws: DataParserError.outOfBounds) {
             try parser.withUnsafeBytes(count: MemoryLayout<NSRect>.size + 1, advance: true) { _ in }
@@ -105,10 +119,14 @@ public struct TestHelper {
 
         try self.testRawRead(parser: &parser, expect: testRect)
 
+        rawDataAccesses += 1
+        rawDataBytes += MemoryLayout<NSRect>.size
+#endif
+
         try self.checkPointerAccess(
             parser: parser,
-            rawDataAccesses: 3,
-            rawDataBytes: MemoryLayout<sockaddr_in>.size + MemoryLayout<Range<UInt64>>.size + MemoryLayout<NSRect>.size,
+            rawDataAccesses: rawDataAccesses,
+            rawDataBytes: rawDataBytes,
             expectPointerAccess: expectPointerAccess
         )
     }
@@ -118,11 +136,11 @@ public struct TestHelper {
 
         try withUnsafeBytes(of: &expectedValue) { expectedBuffer in
             try parser.withUnsafeBytes(count: expectedBuffer.count, advance: false) {
-                #expect(Data($0) == Data(expectedBuffer))
+                #expect(ContiguousArray($0) == ContiguousArray(expectedBuffer))
             }
 
             try parser.withUnsafeBytes(count: expectedBuffer.count, advance: true) {
-                #expect(Data($0) == Data(expectedBuffer))
+                #expect(ContiguousArray($0) == ContiguousArray(expectedBuffer))
             }
         }
     }
@@ -435,6 +453,9 @@ public struct TestHelper {
             expectedByteAccesses = singleBytes + bigEndianBytes + littleEndianBytes + rawDataBytes
         }
 
+        if parser.accessCounts[.pointerAccess] ?? 0 != expectedPointerAccesses * 2 || parser.accessCounts[.byteAccess] ?? 0 != expectedByteAccesses * 2 {
+            print("fail")
+        }
         #expect(parser.accessCounts[.pointerAccess] ?? 0 == expectedPointerAccesses * 2)
         #expect(parser.accessCounts[.byteAccess] ?? 0 == expectedByteAccesses * 2)
     }
@@ -670,23 +691,6 @@ public struct TestHelper {
         }
     }
 
-    private struct FailingDataCollection: Collection, _HasContiguousRegions {
-        typealias Element = UInt8
-        typealias Index = Int
-        struct Region: _ContiguousRegion {
-            func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R { fatalError("Fail") }
-            func startIndex<C>(for collection: C) -> C.Index where C : Collection { collection.startIndex }
-            func endIndex<C>(for collection: C) -> C.Index where C : Collection { collection.startIndex }
-        }
-
-        var readYet = false
-        var startIndex: Int { 0 }
-        var endIndex: Int { 1000 }
-        subscript(position: Int) -> UInt8 { 0 }
-        func index(after i: Int) -> Int { i + 1 }
-        let contiguousRegions: [any _ContiguousRegion] = [Region()]
-    }
-
     private static func testPointerCopies<T>(parser p: DataParser<T>, expectPointerAccess: Bool) throws {
         var parser = p
 
@@ -773,16 +777,6 @@ public struct TestHelper {
             rawDataBytes: 53,
             expectPointerAccess: expectPointerAccess
         )
-
-        var failing = DataParser(FailingDataCollection())
-        testFailure(&failing, expectedError: DataParserError.outOfBounds) { parser, advance in
-            var data = Data(count: 1000)
-            try data.withUnsafeMutableBytes {
-                try $0.withMemoryRebound(to: UInt8.self) {
-                    try parser.copyToBuffer($0, count: 1000, advance: advance)
-                }
-            }
-        }
     }
 
     private static func testReadTuples<T>(parser p: DataParser<T>, expectPointerAccess: Bool) throws {

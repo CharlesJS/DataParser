@@ -1,12 +1,16 @@
 //
-//  DataParser_Foundation.swift
+//  DataParser+Foundation.swift
 //  
 //
 //  Created by Charles Srstka on 3/10/22.
 //
 
+#if Foundation
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
-import DataParser
+#endif
 
 extension DataParser {
     public mutating func readData(count: some BinaryInteger, advance: Bool = true) throws -> Data {
@@ -154,3 +158,5 @@ extension DataParser {
         return UUID(uuid: uuid)
     }
 }
+
+#endif
