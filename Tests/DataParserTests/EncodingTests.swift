@@ -9,7 +9,11 @@ import Testing
 import DataParser
 
 #if Foundation
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 #endif
 
 @Suite struct EncodingTests {

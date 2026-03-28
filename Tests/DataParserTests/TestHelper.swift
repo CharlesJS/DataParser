@@ -2,8 +2,14 @@ import Testing
 @testable import DataParser
 
 #if Foundation
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
-#elseif canImport(Darwin)
+#endif
+#endif
+
+#if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
@@ -81,6 +87,7 @@ internal struct TestHelper {
     }
 
     private static func testParseRawStructs<T>(expectPointerAccess: Bool, closure: ([UInt8]) -> DataParser<T>) throws {
+#if canImport(Darwin)
         var testSockaddr = sockaddr_in(
             sin_len: 0x12,
             sin_family: 0x34,
@@ -88,9 +95,17 @@ internal struct TestHelper {
             sin_addr: .init(s_addr: 0x9abcdef0),
             sin_zero: (1, 2, 3, 4, 5, 6, 7, 8)
         )
+#else
+        var testSockaddr = sockaddr_in(
+            sin_family: UInt16(0x1234).bigEndian,
+            sin_port: 0x5678,
+            sin_addr: .init(s_addr: 0x9abcdef0),
+            sin_zero: (1, 2, 3, 4, 5, 6, 7, 8)
+        )
+#endif
 
         var testRange: Range<UInt64> = (0x98765432..<0xfedcba98)
-#if Foundation
+#if Foundation && canImport(Darwin)
         var testRect = NSRect(origin: NSPoint(x: 0x1234, y: 0x5678), size: NSSize(width: 0x9abc, height: 0xdef0))
 #endif
 
@@ -98,7 +113,7 @@ internal struct TestHelper {
 
         withUnsafeBytes(of: &testSockaddr) { data += $0 }
         withUnsafeBytes(of: &testRange) { data += $0 }
-#if Foundation
+#if Foundation && canImport(Darwin)
         withUnsafeBytes(of: &testRect) { data += $0 }
 #endif
 
@@ -110,7 +125,7 @@ internal struct TestHelper {
         var rawDataAccesses = 2
         var rawDataBytes = MemoryLayout<sockaddr_in>.size + MemoryLayout<Range<UInt64>>.size
 
-#if Foundation
+#if Foundation && canImport(Darwin)
         let cursorBeforeThrow = parser.cursor
         #expect(throws: DataParserError.outOfBounds) {
             try parser.withUnsafeBytes(count: MemoryLayout<NSRect>.size + 1, advance: true) { _ in }
@@ -612,9 +627,11 @@ internal struct TestHelper {
             try $0.readFloat(ofType: Double.self, byteOrder: .big, advance: $1)
         }
 
+#if !os(macOS) || arch(arm64)
         testFailure(&parser, expectedError: DataParserError.invalidArgument, reason: "Unsupported floating-point type") {
             _ = try $0.readFloat(ofType: Float16.self, byteOrder: .little, advance: $1)
         }
+#endif
     }
 
     private static func testReadingRawBytes<T>(parser p: DataParser<T>, expectPointerAccess: Bool) throws {

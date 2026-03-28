@@ -2,12 +2,27 @@ import Testing
 @testable import DataParser
 
 #if Foundation
+#if canImport(FoundationEssentials)
+import Dispatch
+import FoundationEssentials
+
+extension CocoaError: @retroactive Equatable {
+    public static func == (lhs: Self, rhs: Self) -> Bool { lhs.code == rhs.code }
+}
+#else
 import Foundation
+#endif
+
+#if canImport(Glibc)
+import Glibc
+#endif
 
 @Suite struct DataTests {
     @Test func testData() throws {
         try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(Data($0)) }
+#if canImport(Darwin)
         try TestHelper.runParserTests(expectPointerAccess: true) { DataParser(Data($0) as NSData) }
+#endif
     }
     
     @Test func testDispatchData() throws {
@@ -15,9 +30,11 @@ import Foundation
             $0.withUnsafeBytes { DataParser(DispatchData(bytes: $0)) }
         }
         
+#if canImport(Darwin)
         try TestHelper.runParserTests(expectPointerAccess: true) {
             $0.withUnsafeBytes { DataParser((DispatchData(bytes: $0) as AnyObject) as! NSData) }
         }
+#endif
     }
     
     @Test func testNonContiguousDispatchData() throws {
@@ -181,7 +198,7 @@ import Foundation
             ("/bin", true, nil),
             ("/usr/bin/true", false, nil),
             ("/etc/zshrc", false, nil),
-            (NSHomeDirectory(), true, nil),
+            (FileManager.default.homeDirectoryForCurrentUser.path, true, nil),
             ("/dev/does/not/exist", true, nil),
             ("/dev/also/does/not/exist", false, nil),
             ("\0\0\0", false, CocoaError(.fileReadUnknown)),
@@ -192,17 +209,23 @@ import Foundation
         var lengths: [Int] = []
         
         for (path, _, _) in paths {
-            withExtendedLifetime(path as NSString) {
+#if canImport(Darwin)
+            let pathData = withExtendedLifetime(path as NSString) {
                 let fileSystemRep = $0.fileSystemRepresentation
-                let length = strlen(fileSystemRep)
-                
-                for _ in 0..<2 {
-                    data.append(Data(bytes: fileSystemRep, count: length))
-                    data.append(0)
-                }
-                
-                lengths.append(length + 1)
+                return Data(bytes: fileSystemRep, count: strlen(fileSystemRep)) + [0]
             }
+#else
+            let pathData = try FileManager.default.withFileSystemRepresentation(for: path) {
+                guard let fileSystemRep = $0 else { throw CocoaError(.fileReadUnknown) }
+
+                return Data(bytes: fileSystemRep, count: strlen(fileSystemRep)) + [0]
+            }
+#endif
+
+            data.append(pathData)
+            data.append(pathData)
+
+            lengths.append(pathData.count)
         }
         
         var parser = DataParser(data)
