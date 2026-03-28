@@ -111,33 +111,28 @@ extension DataParser {
 
     public mutating func readFileSystemRepresentation(isDirectory: Bool? = nil, advance: Bool = true) throws -> URL {
         try self._makeAtomic(advance: advance) { parser in
-            let bytes = try parser.readCStringBytes(advance: advance)
+            let bytes = try parser.readCStringBytes(advance: true)
+            guard !bytes.isEmpty else { throw CocoaError(.fileReadUnknown) }
 
-            return try bytes.withUnsafeBytes { bytes in
-                if let isDirectory = isDirectory {
-                    let path = bytes.bindMemory(to: CChar.self)
-
-                    guard let url = CFURLCreateFromFileSystemRepresentation(
-                        kCFAllocatorDefault,
-                        path.baseAddress,
-                        path.count,
-                        isDirectory
-                    ) else {
+            return try (bytes + [0]).withUnsafeBytes { bytes in
+                if let isDirectory {
+                    guard let path = bytes.bindMemory(to: Int8.self).baseAddress else {
                         throw CocoaError(.fileReadUnknown)
                     }
 
-                    return url as URL
+                    return URL(fileURLWithFileSystemRepresentation: path, isDirectory: isDirectory, relativeTo: nil)
                 }
 
-                let path: String
+                let path = FileManager.default.string(
+                    withFileSystemRepresentation: bytes.bindMemory(to: Int8.self).baseAddress!,
+                    length: bytes.count - 1
+                )
 
-                if bytes.count != 0, let ptr = bytes.bindMemory(to: Int8.self).baseAddress {
-                    path = FileManager.default.string(withFileSystemRepresentation: ptr, length: bytes.count)
+                return if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, macCatalyst 16.0, *), versionCheck(13) {
+                    URL(filePath: path, directoryHint: .checkFileSystem)
                 } else {
-                    throw CocoaError(.fileReadUnknown)
+                    URL(fileURLWithPath: path)
                 }
-
-                return URL(fileURLWithPath: path)
             }
         }
     }
